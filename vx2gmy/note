@@ -1,0 +1,1 @@
+ bash make_gmy_MPI.sh ../../cases/bifurcation/fluidAndLinksAll.dat bifurcation.gmy 2 300

@@ -1,0 +1,8 @@
+# check file size (bytes)
+wc -c < filename
+
+# get ASCII from voxelizer
+od -v -w$((8*159)) -t dL fluidAndLinks.dat | sed 's/  */ /g' | sed -e 's/^\w*\ *//' > fluidAndLinks.txt
+
+# extract coordinates from voxelizer
+cut -d ' ' -f -3 fluidAndLinksAll.txt

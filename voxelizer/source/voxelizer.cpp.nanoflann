@@ -1,0 +1,635 @@
+#include "palabos3D.h"
+#include "palabos3D.hh"
+
+#include <cmath>
+#include <cstdio>
+#include <limits>
+#include <unordered_map>
+
+#include "nanoflann.hpp"
+#include "utils.h"
+
+namespace plb {
+	template<typename T, int nDim>
+		class SparseTensorFieldDataTransfer3D : public BlockDataTransfer3D {
+			public:
+				SparseTensorFieldDataTransfer3D();
+				virtual void setBlock(AtomicBlock3D& block);
+				virtual void setConstBlock(AtomicBlock3D const& block);
+				virtual SparseTensorFieldDataTransfer3D<T,nDim>* clone() const;
+				virtual plint staticCellSize() const;
+				// Send data from the block into a byte-stream.
+				virtual void send(Box3D domain, std::vector<char>& buffer, modif::ModifT kind) const;
+				// Receive data from a byte-stream into the block.
+				virtual void receive(Box3D domain, std::vector<char> const& buffer, modif::ModifT kind);
+				virtual void receive(Box3D domain, std::vector<char> const& buffer, modif::ModifT kind, Dot3D absoluteOffset) {
+					receive(domain, buffer, kind);
+				}
+				virtual void receive(Box3D domain, std::vector<char> const& buffer,
+						modif::ModifT kind, std::map<int,std::string> const& foreignIds )
+				{
+					receive(domain, buffer, kind);
+				}
+				// Attribute data between two blocks.
+				virtual void attribute(Box3D toDomain, plint deltaX, plint deltaY, plint deltaZ,
+						AtomicBlock3D const& from, modif::ModifT kind);
+				virtual void attribute(Box3D toDomain, plint deltaX, plint deltaY, plint deltaZ,
+						AtomicBlock3D const& from, modif::ModifT kind, Dot3D absoluteOffset)
+				{
+					attribute(toDomain, deltaX, deltaY, deltaZ, from, kind);
+				}
+			private:
+				TensorField3D<T,nDim>* field;
+				TensorField3D<T,nDim> const* constField;
+		};
+
+	// Class SparseTensorFieldDataTransfer3D
+
+	template<typename T, int nDim>
+		SparseTensorFieldDataTransfer3D<T,nDim>::SparseTensorFieldDataTransfer3D()
+		: field(0),
+		constField(0)
+	{ }
+
+	template<typename T, int nDim>
+		void SparseTensorFieldDataTransfer3D<T,nDim>::setBlock(AtomicBlock3D& block) {
+			field = dynamic_cast<TensorField3D<T,nDim>*>(&block);
+			PLB_ASSERT(field);
+			constField = field;
+		}
+
+	template<typename T, int nDim>
+		void SparseTensorFieldDataTransfer3D<T,nDim>::setConstBlock(AtomicBlock3D const& block) {
+			constField = dynamic_cast<TensorField3D<T,nDim> const*>(&block);
+			PLB_ASSERT(constField);
+		}
+
+	template<typename T, int nDim>
+		SparseTensorFieldDataTransfer3D<T,nDim>* SparseTensorFieldDataTransfer3D<T,nDim>::clone() const
+		{
+			return new SparseTensorFieldDataTransfer3D<T,nDim>(*this);
+		}
+
+	template<typename T, int nDim>
+		plint SparseTensorFieldDataTransfer3D<T,nDim>::staticCellSize() const {
+			return nDim*sizeof(T);
+		}
+
+	template<typename T, int nDim>
+		void SparseTensorFieldDataTransfer3D<T,nDim>::send(Box3D domain, std::vector<char>& buffer, modif::ModifT kind) const
+		{
+			PLB_PRECONDITION( constField );
+			PLB_PRECONDITION( contained(domain, constField->getBoundingBox()) );
+			PLB_ASSERT( nDim>=1 );
+			plint cellSize = staticCellSize();
+			buffer.clear();
+			std::vector<char> tmpData(cellSize);
+
+			for (plint iX=domain.x0; iX<=domain.x1; ++iX) {
+				for (plint iY=domain.y0; iY<=domain.y1; ++iY) {
+					for (plint iZ=domain.z0; iZ<=domain.z1; ++iZ) {
+						if (constField->get(iX,iY,iZ)[0] != -1) {
+							memcpy((void*)(&tmpData[0]), (const void*)(&constField->get(iX,iY,iZ)[0]), nDim*sizeof(T));
+							buffer.insert(buffer.end(), tmpData.begin(), tmpData.end());
+						}
+					}
+				}
+			}
+		}
+
+	template<typename T, int nDim>
+		void SparseTensorFieldDataTransfer3D<T,nDim>::receive (
+				Box3D domain, std::vector<char> const& buffer, modif::ModifT kind )
+		{
+			PLB_PRECONDITION( field );
+			PLB_PRECONDITION( contained(domain, field->getBoundingBox()) );
+			PLB_PRECONDITION( domain.nCells()*staticCellSize() == (plint)buffer.size() );
+
+			// Avoid dereferencing uninitialized pointer.
+			if (buffer.empty()) return;
+			plint iData=0;
+			for (plint iX=domain.x0; iX<=domain.x1; ++iX) {
+				for (plint iY=domain.y0; iY<=domain.y1; ++iY) {
+					for (plint iZ=domain.z0; iZ<=domain.z1; ++iZ) {
+						memcpy((void*)(&field->get(iX,iY,iZ)[0]), (const void*)(&buffer[iData]), nDim*sizeof(T));
+						iData += nDim*sizeof(T);
+					}
+				}
+			}
+		}
+
+	template<typename T, int nDim>
+		void SparseTensorFieldDataTransfer3D<T,nDim>::attribute (
+				Box3D toDomain, plint deltaX, plint deltaY, plint deltaZ,
+				AtomicBlock3D const& from, modif::ModifT kind )
+		{
+			PLB_PRECONDITION (typeid(from) == typeid(TensorField3D<T,nDim> const&));
+			PLB_PRECONDITION( contained(toDomain, field->getBoundingBox()) );
+			TensorField3D<T,nDim> const& fromField = (TensorField3D<T,nDim> const&) from;
+			for (plint iX=toDomain.x0; iX<=toDomain.x1; ++iX) {
+				for (plint iY=toDomain.y0; iY<=toDomain.y1; ++iY) {
+					for (plint iZ=toDomain.z0; iZ<=toDomain.z1; ++iZ) {
+						for (int iDim=0; iDim<nDim; ++iDim) {
+							field->get(iX,iY,iZ)[iDim] = fromField.get(iX+deltaX,iY+deltaY,iZ+deltaZ)[iDim];
+						}
+					}
+				}
+			}
+		}
+}
+
+using namespace plb;
+using namespace nanoflann;
+
+typedef double T;
+#define DESCRIPTOR descriptors::D3Q19Descriptor
+
+typedef KDTreeSingleIndexAdaptor<
+	L2_Simple_Adaptor<double, PointCloud<double> > ,
+	PointCloud<double>,
+	3 /* dim */
+	> kdtree_t;
+
+const plint blockSize = 0;				// Zero means: no sparse representation.
+const plint extendedEnvelopeWidth = 2;	// Because the Guo off lattice boundary condition needs 2-cell neighbor access.
+const plint borderWidth = 1;			// Because the Guo boundary condition acts in a one-cell layer.
+										//		Requirement: margin >= borderWidth.
+plint extraLayer = 0;					// Make the bounding box larger; for visualization purposes only.
+										//		For the simulation, it is OK to have extraLayer = 0.
+const plint margin = 5;					// Extra margin of allocated cells around the obstacle.
+
+bool linkFileUseInnerBorder = true;
+bool linkFileUseOuterBorder = false;
+
+typedef std::numeric_limits< double > dbl;
+
+std::vector<Array<T,3> > analysisPoints;
+plint num_Ilets, num_Olets;
+std::string arteryMeshFileName;
+
+//plint gridLevel = 0;
+plint referenceDirection = 0;
+//plint referenceResolution = 0;
+plint resolution = 0;
+
+typedef TriangleSet<T>::Triangle Triangle;
+TriangleSet<T>* arteryTriangleSet = 0;
+TriangleSet<T>  ArteryTriangleSet;
+
+TriangularSurfaceMesh<T>* arterySurfaceMesh = 0;
+
+// Point cloud of triangle centroids.
+PointCloud<double> pCloud;
+// Map of lid triangles and lid identifiers.
+std::unordered_map<plint,int> lidTriangles;
+
+// Structure which defines an opening.
+// The surface geometry (*.stl) contains openings, which represent inlets and outlets.
+// Opening of type = 2 is inlet; opening of type = 3 is outlet.
+template<typename T>
+struct Opening {
+	Array<T,3> center;
+	Array<T,3> normal;
+	T innerRadius;
+	T outerRadius;
+	int type;
+	int index;
+};
+std::vector<Opening<T> > openings;
+
+// Convert double to plint.
+plint double_to_plint(double f) {
+	union {double f; plint i;} u;
+	u.f = f;
+	return u.i;
+}
+// Convert plint to double.
+double plint_to_double(plint i) {
+	union {double f; plint i;} u;
+	u.i = i;
+	return u.f;
+}
+
+// Read the user input XML file provided at the command-line.
+void readGeneralParameters(XMLreader const& generalXML)
+{
+	generalXML["referenceDirection"].read(referenceDirection);
+  //generalXML["referenceResolution"].read(referenceResolution);
+	generalXML["resolution"].read(resolution);
+
+	generalXML["stl"].read(arteryMeshFileName);
+  //generalXML["gridLevel"].read(gridLevel);
+  //PLB_ASSERT(gridLevel >= 0);
+
+	generalXML["analysisPoints"]["num_Ilets"].read(num_Ilets);
+	generalXML["analysisPoints"]["num_Olets"].read(num_Olets);
+	for (plint i=1; i<=num_Ilets+num_Olets; ++i) {
+		std::vector<T> nextPoint;
+		generalXML["analysisPoints"]["point"][i].read(nextPoint);
+
+		if (nextPoint.size() != 3) {
+			throw PlbIOException("-> analysis points must be 3-component coordinates");
+		}
+		analysisPoints.push_back(Array<T,3>(nextPoint[0],nextPoint[1],nextPoint[2]));
+	}
+
+	// The surface geometry (STL file) is read into data structures comprised of a set of triangles.
+	// The DBL constant means that double precision accuracy will be used.
+	arteryTriangleSet = new TriangleSet<T>(arteryMeshFileName, DBL);
+}
+
+template<typename T1, typename T2>
+class VoxelToLink3D : public BoxProcessingFunctional3D_ST<T1, T2, 159> {
+	public:
+		VoxelToLink3D(Box3D bbox);
+		virtual void process(Box3D domain, ScalarField3D<T1>& flags, TensorField3D<T2,159>& links);
+		virtual VoxelToLink3D<T1,T2>* clone() const {
+			return new VoxelToLink3D(*this);
+		}
+		virtual void getTypeOfModification(std::vector<modif::ModifT>& modified) const {
+			modified[0] = modif::nothing;
+			modified[1] = modif::staticVariables;
+		}
+	private:
+		T2 globalid(Dot3D const& absPos, plint iX, plint iY, plint iZ) const;
+		std::vector<std::pair<size_t,double> > kdtree_query(double query_pt[3], const double search_radius, const kdtree_t& index);
+	private:
+		plint nX, nY, nZ;
+};
+
+// Class VoxelToLink3D
+
+template<typename T1, typename T2>
+VoxelToLink3D<T1,T2>::VoxelToLink3D(Box3D bbox):
+	nX(bbox.x1+1),
+	nY(bbox.y1+1),
+	nZ(bbox.z1+1)
+{ }
+
+template<typename T1, typename T2>
+T2 VoxelToLink3D<T1,T2>::globalid(Dot3D const& absPos, plint iX, plint iY, plint iZ) const {
+	return iZ+absPos.z + nZ*( iY+absPos.y + nY*(iX+absPos.x));
+}
+
+template<typename T1, typename T2>
+std::vector<std::pair<size_t,double> > VoxelToLink3D<T1,T2>::kdtree_query(double query_pt[3], const double search_radius, const kdtree_t& index)
+{
+	// create vector to contain found triangles
+	std::vector<std::pair<size_t,double> > ret_matches;
+	// create SearchParams
+	nanoflann::SearchParams params;// params.sorted = false;
+	// perform search
+	const size_t nMatches = index.radiusSearch(&query_pt[0],search_radius,ret_matches,params);
+	// output to screen
+	//pcout << "radiusSearch(): radius=" << search_radius << " -> " << nMatches << " matches\n";
+	//for (size_t i = 0; i < nMatches; i++)
+	//	pcout << "idx[" << i << "]=" << ret_matches[i].first << " dist[" << i << "]=" << ret_matches[i].second << std::endl;
+	//pcout << "\n";
+	return ret_matches;
+}
+
+template<typename T1, typename T2>
+void VoxelToLink3D<T1,T2>::process(
+		Box3D domain, ScalarField3D<T1>& flags, TensorField3D<T2,159>& links)
+{
+	// construct the index associated to the same dataset
+	// data points are NOT stored in the binary file
+	//pcout << "-> reading (kd-tree) index.bin on " << getpid() << std::endl;
+	kdtree_t index(3 /*dim*/, pCloud, KDTreeSingleIndexAdaptorParams(10 /* max leaf */));
+	// load index from file
+	FILE *f = fopen("index.bin", "rb");
+	if (!f) throw std::runtime_error("--> error reading index file!");
+	index.loadIndex(f); fclose(f);
+	// continue with regular process()
+	Dot3D absPos = flags.getLocation();
+	Dot3D ofs = computeRelativeDisplacement(flags, links);
+	//pcout << "--> processing links and finding intersections with triangles on " << getpid() << std::endl;
+	for (plint iX=domain.x0; iX<=domain.x1; ++iX) {
+		for (plint iY=domain.y0; iY<=domain.y1; ++iY) {
+			for (plint iZ=domain.z0; iZ<=domain.z1; ++iZ) {
+				Array<T2,159>& linkdata = links.get(iX+ofs.x, iY+ofs.y, iZ+ofs.z);
+				if (flags.get(iX,iY,iZ)) {
+					linkdata[0] = iX+absPos.x; linkdata[1] = iY+absPos.y; linkdata[2] = iZ+absPos.z;
+					int writepos = 2; double search_radius = 2.0;
+					for (plint dx=-1; dx<=+1; ++dx) {
+						for (plint dy=-1; dy<=+1; ++dy) {
+							for (plint dz=-1; dz<=+1; ++dz) {
+								if (!(dx==0 && dy==0 && dz==0)) {
+									//pcout << "displacement: (" << dx << "," << dy << "," << dz << ")" << std::endl;
+									if (flags.get(iX+dx,iY+dy,iZ+dz)) {	// neighbour is a fluid site?
+										writepos += 6;
+									} else {							// neighbour is a solid site?
+										// create query point
+										double query_pt[3] = {double(linkdata[0]),double(linkdata[1]),double(linkdata[2])};
+										// construct segment (line between p1 and p2)
+										Array<double,3> p1(linkdata[0],   linkdata[1],   linkdata[2]);
+										Array<double,3> p2(linkdata[0]+dx,linkdata[1]+dy,linkdata[2]+dz);
+										// check for intersection with triangle
+										// loop through triangles until intersection is found
+										int intersect = -1; plint iT, numT;
+										std::vector<std::pair<size_t,double> > ret_matches;
+										// returned variables
+										Array<double,3> intersection, normal;
+										double distance;
+										while (intersect != 1) {
+											// expand the search radius
+											search_radius *= 1.5;// pcout << "expanding radius!" << std::endl;
+											// get triangle index from kd-tree
+											ret_matches = kdtree_query(query_pt,search_radius,index);
+											// get number of returned triangles
+											numT = ret_matches.size();
+											// loop through returned triangles
+											for (iT=0; iT<numT; ++iT) {intersect =
+													arterySurfaceMesh->pointOnTriangle(p1,p2,0,ret_matches[iT].first,intersection,normal,distance);
+												if (intersect == 1) break;
+											} if (isinf(search_radius)) throw std::runtime_error("--> could not find intersection with any triangle!");
+										} //std::cout << "--> found intersection with triangle: " << ret_matches[iT].first << "\n---> at distance: " << distance << std::endl;
+										// distance should be a fraction of lattice vector
+										distance /= norm(p1-p2);
+										if (lidTriangles.find(ret_matches[iT].first) != lidTriangles.end()) {
+											//std::cout << "---> belonging to lid: " << lidTriangles.at(ret_matches[iT].first) << std::endl;
+											linkdata[++writepos] = openings[
+												lidTriangles.at(ret_matches[iT].first)].type;
+											plint temp = openings[
+												lidTriangles.at(ret_matches[iT].first)].index;
+											if (temp < num_Ilets) {
+												linkdata[++writepos] = temp;
+												if (temp < 0) throw std::runtime_error("--> invalid opening index (1)!");
+											} else {
+												temp -= num_Ilets;
+												linkdata[++writepos] = temp;
+												if (temp < 0) throw std::runtime_error("--> invalid opening index (2)!");
+											}
+											linkdata[++writepos] = double_to_plint(distance);
+											linkdata[++writepos] = double_to_plint(-normal[0]);
+											linkdata[++writepos] = double_to_plint(-normal[1]);
+											linkdata[++writepos] = double_to_plint(-normal[2]);
+										} else { // intersection with wall
+											linkdata[++writepos] = 1;
+											writepos += 1;
+											linkdata[++writepos] = double_to_plint(distance);
+											linkdata[++writepos] = double_to_plint(-normal[0]);
+											linkdata[++writepos] = double_to_plint(-normal[1]);
+											linkdata[++writepos] = double_to_plint(-normal[2]);
+										}
+									}
+								}
+							}
+						}
+					}
+				} else {
+					linkdata[0] = -1;
+				}
+			}
+		}
+	}
+}
+
+void memu()
+{
+	// Get the the current process' status file from the proc filesystem
+	FILE* procfile = fopen("/proc/self/status", "r");
+
+	long to_read = 8192; char buffer[to_read];
+	int read = fread(buffer, sizeof(char), to_read, procfile);
+	fclose(procfile);
+
+	bool found_vmrss = false;
+	char* search_result;
+	long vmrss_kb;
+
+	// Look through proc status contents line by line
+	char delims[] = "\n";
+	char* line = strtok(buffer, delims);
+	while (line != NULL && !found_vmrss) {
+		search_result = strstr(line, "VmRSS:");
+		if (search_result != NULL) {
+			sscanf(line, "%*s %ld", &vmrss_kb);
+			found_vmrss = true;
+		} line = strtok(NULL, delims);
+	}
+
+	std::stringstream output;
+	pcout << "-| memory use: " << vmrss_kb << " kB" << '\n';
+}
+
+void createLinkFile(MultiScalarField3D<int>& voxelMatrix, std::string fname) {
+
+	plint X = voxelMatrix.getBoundingBox().x1-voxelMatrix.getBoundingBox().x0;
+	plint Y = voxelMatrix.getBoundingBox().y1-voxelMatrix.getBoundingBox().y0;
+	plint Z = voxelMatrix.getBoundingBox().z1-voxelMatrix.getBoundingBox().z0;
+
+	MultiScalarField3D<int> flagMatrix((MultiBlock3D&) voxelMatrix);
+
+	setToConstant(flagMatrix,
+			flagMatrix.getBoundingBox(), 0);
+	setToConstant(flagMatrix, voxelMatrix, voxelFlag::inside,
+			flagMatrix.getBoundingBox(), 1);
+	if (linkFileUseInnerBorder) {
+		setToConstant(flagMatrix, voxelMatrix,
+				voxelFlag::innerBorder, flagMatrix.getBoundingBox(), 1);}
+	if (linkFileUseOuterBorder) {
+		setToConstant(flagMatrix, voxelMatrix,
+				voxelFlag::outerBorder, flagMatrix.getBoundingBox(), 1);}
+
+	plint numCells = computeSum(flagMatrix);
+	pcout << std::scientific << "--> total number of fluid cells: " << numCells << std::endl;
+
+	int count = 0;
+	int maxbb = 100;
+	for (plint x0 = voxelMatrix.getBoundingBox().x0; x0 < X; x0 += (maxbb+1))
+		for (plint y0 = voxelMatrix.getBoundingBox().y0; y0 < Y; y0 += (maxbb+1))
+			for (plint z0 = voxelMatrix.getBoundingBox().z0; z0 < Z; z0 += (maxbb+1)) {
+
+				plint x1 = x0+maxbb; plint y1 = y0+maxbb; plint z1 = z0+maxbb;
+
+				if (x1 >= X) x1 = X;
+				if (y1 >= Y) y1 = Y;
+				if (z1 >= Z) z1 = Z;
+
+				Box3D bbox(x0,x1,y0,y1,z0,z1);
+
+				plint numCells = computeSum(flagMatrix, bbox);
+				pcout << "--> number of fluid cells: " << numCells << std::endl;
+
+				if (numCells != 0) {
+					memu();
+					MultiTensorField3D<plint,159> linkField(voxelMatrix, bbox);
+					memu();
+
+					char buffer[32]; count++;
+					snprintf(buffer, sizeof(char)*32, "fluidAndLinks_%03i.dat", count);
+
+					pcout << "--> processing links and finding intersections with triangles" << std::endl;
+					applyProcessingFunctional(new VoxelToLink3D<int,plint>(bbox), bbox, flagMatrix, linkField);
+					bool dynamicContent = false;
+					pcout << "--> data transfer" << std::endl;
+					linkField.setDataTransfer(new SparseTensorFieldDataTransfer3D<plint,159>());
+					pcout << "--> parallel save" << std::endl;
+					parallelIO::save(linkField, buffer, dynamicContent);
+				}
+			}
+}
+
+void kdtree_build(const PointCloud<double> pCloud)
+{
+	// construct a kd-tree index
+	kdtree_t index(3 /*dim*/, pCloud, KDTreeSingleIndexAdaptorParams(10 /* max leaf */));
+	index.buildIndex();
+	// write index to file
+	FILE *f = fopen("index.bin", "wb");
+	if (!f) throw std::runtime_error("-> error writing index file!");
+	index.saveIndex(f);
+	fclose(f);
+}
+
+// This is the function that prepares and performs the voxelization.
+void run()
+{
+	//resolution = referenceResolution * util::twoToThePower(gridLevel);
+	DEFscaledMesh<T>* arteryDefMesh =
+		new DEFscaledMesh<T>(*arteryTriangleSet, resolution, referenceDirection, margin, extraLayer);
+	TriangleBoundary3D<T> arteryBoundary(*arteryDefMesh);
+	pcout << "-> dx: " << std::setprecision(dbl::max_digits10) << arteryDefMesh->getDx() << " in units of .stl" << std::endl;
+	delete arteryDefMesh;
+	arteryBoundary.getMesh().inflate();
+
+	// translate the mesh
+	Array<T,2> xRange, yRange, zRange;
+	arteryBoundary.getMesh().computeBoundingBox(xRange, yRange, zRange);
+	arteryBoundary.getMesh().translate(Array<T,3>(-xRange[0]+3.0,-yRange[0]+3.0,-zRange[0]+3.0));
+
+	arterySurfaceMesh = new TriangularSurfaceMesh<T>(arteryBoundary.getMesh());
+	ArteryTriangleSet = arterySurfaceMesh->toTriangleSet(DBL);
+
+	std::vector<Triangle> const& triangles = ArteryTriangleSet.getTriangles();
+	plint numTriangles = triangles.size();
+	pCloud.pts.resize(numTriangles);
+	for (plint i=0; i<numTriangles; i++) {
+		pCloud.pts[i].x = (triangles[i][0][0]+triangles[i][1][0]+triangles[i][2][0])/3.0;
+		pCloud.pts[i].y = (triangles[i][0][1]+triangles[i][1][1]+triangles[i][2][1])/3.0;
+		pCloud.pts[i].z = (triangles[i][0][2]+triangles[i][1][2]+triangles[i][2][2])/3.0;
+	}
+
+	pcout << "-> dumping ArteryTriangleSet.stl" << std::endl;
+	ArteryTriangleSet.writeBinarySTL("ArteryTriangleSet.stl");
+
+	pcout << "-> building kd-tree" << std::endl;
+	kdtree_build(pCloud);
+
+	plint num_openings = (plint)arteryBoundary.getInletOutlet().size();
+	plint sortDirection = 0;
+	openings.reserve(num_openings);
+
+	if (num_openings != (plint)analysisPoints.size()) {
+		throw PlbIOException("-> too few analysis points");
+	}
+
+	pcout << "-> locating openings and identifying lid triangles" << std::endl;
+	for (plint i=0; i<num_openings; ++i) {
+		// set distanceToIOlet to some large value
+		double distanceToIOlet = std::numeric_limits<double>::max();
+		// compute center and normal of opening
+		openings[i].center = computeBaryCenter (
+				arteryBoundary.getMesh(),
+				arteryBoundary.getInletOutlet(sortDirection)[i] );
+		openings[i].normal = -computeNormal (
+				arteryBoundary.getMesh(),
+				arteryBoundary.getInletOutlet(sortDirection)[i] );
+		// identify opening as inlet or outlet
+		for (plint j=0; j<num_openings; ++j) {
+			if (norm(analysisPoints[j]-openings[i].center) < distanceToIOlet) {
+				distanceToIOlet = norm(analysisPoints[j]-openings[i].center);
+				if (j<num_Ilets) openings[i].type = 2;
+				else			 openings[i].type = 3; openings[i].index = j;
+			}
+		}
+		// identify lid triangles at this opening; store in unordered_map for later
+		plint frstTriangle = arteryBoundary.getInletOutlet(sortDirection)[i].firstTriangle;
+		plint numTriangles = arteryBoundary.getInletOutlet(sortDirection)[i].numTriangles;
+		for (plint iTriangle = frstTriangle; iTriangle<frstTriangle+numTriangles; ++iTriangle) {
+			lidTriangles[iTriangle] = i;
+		}
+		// output to screen
+		pcout << "-> opening at  (" << openings[i].center[0] << "," << openings[i].center[1] << ","
+			<< openings[i].center[2] << ")" << std::endl;
+		pcout << "-----> normal: (" << openings[i].normal[0] << "," << openings[i].normal[1] << ","
+			<< openings[i].normal[2] << ")" << std::endl;
+		pcout << "------> index: (" << openings[i].index << ")" << std::endl;
+		pcout << "-------> type: (" << openings[i].type << ")" << std::endl;
+	}
+
+	memu();
+	// VOXELIZATION PROCESS
+	pcout << "-> voxelizing" << std::endl;
+	const int arteryFlowType = voxelFlag::inside;
+	VoxelizedDomain3D<T> arteryVoxelizedDomain (
+			arteryBoundary, arteryFlowType, extraLayer, borderWidth, extendedEnvelopeWidth, blockSize );
+	//pcout << getMultiBlockInfo(arteryVoxelizedDomain.getVoxelMatrix()) << std::endl;
+	memu();
+
+	pcout << "-> saving links" << std::endl;
+	if (linkFileUseInnerBorder) {
+		if (linkFileUseOuterBorder) {
+			pcout << "--> links for inner and outer border will be produced" << std::endl;
+		} else {
+			pcout << "--> links for inner border will be produced, but not for outer border" << std::endl;
+		}
+	} else {
+		linkFileUseOuterBorder = false;
+		pcout << "--> links will not be produced for either inner or outer border" << std::endl;
+	}
+	createLinkFile(arteryVoxelizedDomain.getVoxelMatrix(), "fluidAndLinks.dat");
+	pcout << "-> done" << std::endl;
+	return;
+}
+
+int main(int argc, char* argv[])
+{
+	PLB_ASSERT(sizeof(plint) == sizeof(double))
+
+		plbInit(&argc, &argv);
+	global::directories().setOutputDir("./");
+	global::IOpolicy().activateParallelIO(true);
+
+	std::string generalParamXmlFileName;
+	try {
+		global::argv(1).read(generalParamXmlFileName);
+	}
+	catch (PlbIOException& exception) {
+		pcout << "-> wrong parameters; the syntax is: "
+			<< (std::string) global::argv(0) << " params.xml" << std::endl;
+		return -1;
+	}
+
+	// Read the parameter XML input file.
+	try {
+		XMLreader generalXML(generalParamXmlFileName);
+		readGeneralParameters(generalXML);
+	}
+	catch (PlbIOException& exception) {
+		pcout << "-> error in input file " << generalParamXmlFileName
+			<< ": " << exception.what() << std::endl;
+		return -1;
+	}
+
+	try {
+		run();
+	}
+	catch (PlbIOException& exception) {
+		pcout << exception.what() << std::endl;
+		return -1;
+	}
+
+	return 0;
+}
+//pcout << "---> DEBUG" << std::endl;
+//{
+//	int i = 0;
+//	char hostname[256];
+//	gethostname(hostname, sizeof(hostname));
+//	printf("PID %d on %s ready for attach\n", getpid(), hostname);
+//	fflush(stdout);
+//	while (0 == i)
+//		sleep(5);
+//}
