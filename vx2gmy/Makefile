@@ -4,4 +4,3 @@ mpivx2gmy: mpivx2gmy.cc
 	$(MPICC) -O3 -Wall -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64 -std=c++11 mpivx2gmy.cc -lz -o mpivx2gmy
 debug: mpivx2gmy.cc
 	$(MPICC) -O0 -g -Wall -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64 -std=c++11 mpivx2gmy.cc -lz -o mpivx2gmy
-
