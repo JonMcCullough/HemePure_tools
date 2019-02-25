@@ -6,9 +6,6 @@
 #include <limits>
 #include <unordered_map>
 
-#include <iostream>
-#include <fstream>
-
 #include "utils.h"
 
 // ========== DO NOT TOUCH (START) ========== //
@@ -489,27 +486,48 @@ void memu()
 	pcout << "-| memory use: " << vmrss_kb << " kB" << "\n";
 }
 
-void writeXML(const pluint num_openings, double dx, double shift_x, double shift_y, double shift_z)
+void writeXML(const pluint num_openings)
 {
 	std::ofstream myfile;
-	myfile.open ("iolets_block_inputxml.txt");
+	myfile.open ("example.txt");
 
-	myfile << "  <inlets>\n";
+	myfile <<
+		"<?xml version=\"1.0\"?>\n"
+		"<hemelbsettings version=\"3\">\n"
+		"  <simulation>\n"
+		"    <step_length units=\"s\" value=\"CHANGE\"/>\n"
+		"    <steps units=\"lattice\" value=\"CHANGE\"/>\n"
+		"    <stresstype value=\"1\"/>\n"
+		"    <voxel_size units=\"m\" value=\"CHANGE\"/>\n"
+		"    <origin units=\"m\" value=\"(0.0,0.0,0.0)\"/>\n"
+		"  </simulation>\n"
+		" <geometry>\n"
+		"    <datafile path=\"CHANGE\"/>\n"
+		"  </geometry>\n"
+		"  <initialconditions>\n"
+		"    <pressure>\n"
+		"      <uniform units=\"mmHg\" value=\"0.0\"/>\n"
+		"    </pressure>\n"
+		"  </initialconditions>\n"
+		"  <monitoring>\n"
+		"    <incompressibility/>\n"
+		"  </monitoring>\n"
+		"  <inlets>\n";
 
-	int inletnumber = 0;
 	for (pluint i = 0; i < num_openings; ++i) {
 		if (openings[i].type == 2) { // inlets
-			inletnumber++;
 			myfile <<
 				"    <inlet>\n"
-				"      <condition type=\"velocity\" subtype=\"file\">\n"
-				"        <path value=\"INLET" << inletnumber << "_VELOCITY.txt\"/>\n"
-				"        <radius value=\"0.15e-3\" units=\"m\"/>\n"
+				"      <condition subtype=\"cosine\" type=\"pressure\">\n"
+				"        <amplitude units=\"mmHg\" value=\"0.0\"/>\n"
+				"        <mean units=\"mmHg\" value=\"0.0\"/>\n"
+				"        <phase units=\"rad\" value=\"0.0\"/>\n"
+				"        <period units=\"s\" value=\"1\"/>\n"
 				"      </condition>\n"
 				"      <normal units=\"dimensionless\" value=\"(" <<
 				openings[i].normal[0] << "," << openings[i].normal[1] << "," << openings[i].normal[2] << ")\"/>\n"
-				"      <position units=\"m\" value=\"(" <<
-				(openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
+				"      <position units=\"lattice\" value=\"(" <<
+				openings[i].center[0] << "," << openings[i].center[1] << "," << openings[i].center[2] << ")\"/>\n"
 				"    </inlet>\n";
 		}
 	}
@@ -527,12 +545,13 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 				"      </condition>\n"
 				"      <normal units=\"dimensionless\" value=\"(" <<
 				openings[i].normal[0] << "," << openings[i].normal[1] << "," << openings[i].normal[2] << ")\"/>\n"
-				"      <position units=\"m\" value=\"(" <<
-				(openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
+				"      <position units=\"lattice\" value=\"(" <<
+				openings[i].center[0] << "," << openings[i].center[1] << "," << openings[i].center[2] << ")\"/>\n"
 				"    </outlet>\n";
 		}
 	}
 	myfile << "  </outlets>\n";
+	myfile << "</hemelbsettings>";
 
 	myfile.close();
 	pcout << "-> writing XML\n";
@@ -705,10 +724,8 @@ void createLinkFile(
 }
 
 // this is the function that prepares and performs the voxelization
-void run(bool endearly)
+void run()
 {
-	Cuboid<T> cuboid = (*arteryTriangleSet).getBoundingCuboid(); // get the initial bounding box before palabos centres origin to 0
-
 	DEFscaledMesh<T>* arteryDefMesh =
 		new DEFscaledMesh<T>(*arteryTriangleSet, resolution, referenceDirection, margin, extraLayer);
 	TriangleBoundary3D<T> arteryBoundary(*arteryDefMesh);
@@ -720,10 +737,6 @@ void run(bool endearly)
 	Array<T,2> xRange, yRange, zRange;
 	arteryBoundary.getMesh().computeBoundingBox(xRange, yRange, zRange);
 	arteryBoundary.getMesh().translate(Array<T,3>(-xRange[0]+3.0,-yRange[0]+3.0,-zRange[0]+3.0));
-
-	// For reverse transform later
-	double dx = arteryDefMesh->getDx();
-	double shift_x = -cuboid.x0()/dx+3.0, shift_y = -cuboid.y0()/dx+3.0, shift_z = -cuboid.z0()/dx+3.0;
 
 	arterySurfaceMesh = new TriangularSurfaceMesh<T>(arteryBoundary.getMesh());
 
@@ -740,11 +753,6 @@ void run(bool endearly)
 	}
 
 	pcout << "-> locating openings and identifying lid triangles" << std::endl;
-
-	std::ofstream ioletfile;
-	ioletfile.open("ioletpositions.txt");
-	ioletfile << "DX: " << dx << std::endl;
-	ioletfile << "SHIFTS: " << shift_x << " " << shift_y << " " << shift_z << std::endl;
 	for (pluint i = 0; i < num_openings; ++i) {
 		// set distanceToIOlet to some large value
 		T distanceToIOlet = std::numeric_limits<T>::max();
@@ -779,15 +787,9 @@ void run(bool endearly)
 			<< openings[i].normal[2] << ")" << std::endl;
 		pcout << "------> index: (" << openings[i].index << ")" << std::endl;
 		pcout << "-------> type: (" << openings[i].type << ")" << std::endl;
-
-		ioletfile << openings[i].center[0] << " " << openings[i].center[1] << " " << openings[i].center[2] << std::endl;
 	}
-	ioletfile.close();
 
-	if(endearly == true) {
-		pcout << "Ending early. Positions were output to ioletpositions.txt" << std::endl;
-		exit(0);
-	}
+	writeXML(num_openings);
 
 	memu();
 	// VOXELIZATION PROCESS
@@ -809,23 +811,12 @@ void run(bool endearly)
 		pcout << "--> links will not be produced for either inner or outer border" << std::endl;
 	}
 	createLinkFile(arteryVoxelizedDomain.getVoxelMatrix(), arteryVoxelizedDomain.getTriangleHash(), "fluidAndLinks.dat");
-
-	// write the heme input xml file with the correct inlet and outlet positions (in physical units)
-	writeXML(num_openings, dx, shift_x, shift_y, shift_z);
 	pcout << "-> done" << std::endl;
 	return;
 }
 
 int main(int argc, char* argv[])
 {
-	// end early if two arguments are given instead of one
-	bool endearly = false;
-	pcout << argc << std::endl;
-	if(argc == 3) {
-		pcout << "2 arguments given - ending early (after iolets positions dump)";
-		endearly = true;
-	}
-
 	plbInit(&argc, &argv);
 	global::directories().setOutputDir("./");
 	global::IOpolicy().activateParallelIO(true);
@@ -852,7 +843,7 @@ int main(int argc, char* argv[])
 	}
 
 	try {
-		run(endearly);
+		run();
 	}
 	catch (PlbIOException& exception) {
 		pcout << exception.what() << std::endl;
