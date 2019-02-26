@@ -1,5 +1,7 @@
 .nfs*
 .sconsign.dblite
+voxelAndLinks.zip
+voxelizer/palabos/
 voxelizer/source/voxelizer
 voxelizer/source/voxelizer.o
 vx2gmy/mpivx2gmy
