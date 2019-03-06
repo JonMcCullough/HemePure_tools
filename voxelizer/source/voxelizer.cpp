@@ -536,6 +536,33 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 
 	myfile.close();
 	pcout << "-> writing XML\n";
+
+	// Radius file (openings has this info)
+	myfile.open("inlets_radius.txt");
+	//myfile << "inlets\n";
+
+	inletnumber = 0;
+	for (pluint i = 0; i < num_openings; ++i) {
+		if (openings[i].type == 2) { // inlets
+			inletnumber++;
+			myfile << inletnumber << "," << 0.5*(openings[i].innerRadius + openings[i].outerRadius) << "\n";
+		}
+	}
+
+	myfile.close();
+	myfile.open("outlets_radius.txt");
+
+	//myfile << "outlets\n";
+	inletnumber = 0;
+	for (pluint i = 0; i < num_openings; ++i) {
+		if (openings[i].type == 3) { // outlets
+			inletnumber++;
+			myfile << inletnumber << "," << 0.5*(openings[i].innerRadius + openings[i].outerRadius) << "\n";
+		}
+
+	}
+	myfile.close();
+	pcout << "-> writing Radii file\n";
 }
 
 // assigns all triangles beforehand, but with heavy memory usage
@@ -754,6 +781,14 @@ void run(bool endearly)
 				arteryBoundary.getMesh(),
 				arteryBoundary.getInletOutlet(sortDirection)[i] );
 		openings[i].normal = computeNormal (
+				arteryBoundary.getMesh(),
+				arteryBoundary.getInletOutlet(sortDirection)[i] );
+
+		// compute radii values
+		openings[i].innerRadius = computeInnerRadius (
+				arteryBoundary.getMesh(),
+				arteryBoundary.getInletOutlet(sortDirection)[i] );
+		openings[i].outerRadius = computeOuterRadius (
 				arteryBoundary.getMesh(),
 				arteryBoundary.getInletOutlet(sortDirection)[i] );
 

@@ -18,6 +18,9 @@ def execute(command):
 def transform_to_lattice(pos, dx, shifts):
     return pos/dx + shifts
 
+def transform_to_physical(pos, dx, shifts):
+    return dx*(pos - shifts)
+
 def write_voxelizer_xml(xmlfname, RESOLUTION, STLFNAME, inletposlist, outletposlist):
     xml = '<?xml version="1.0" ?>\n<!-- the referenceDirection is used for the resolution -->\n<!-- see src/offLattice/triangularSurfaceMesh.hh -->\n<!-- 0 means x-direction, 1 means y-direction and 2 means z-direction -->\n<referenceDirection> 0 </referenceDirection>\n'
     xml += "<resolution> " + str(RESOLUTION) + " </resolution>\n"
@@ -82,12 +85,12 @@ def write_heme_xml(hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt):
     with open(hemexmlfname, "w") as outxml:
         outxml.write(xml)
 
-
+## JM stuff...
 def write_dualMap(Aout, Vin):
     nI = len(Vin)
     nA = len(Aout)
     VinPaired = np.zeros(nI); VinPaired.fill(np.inf)
-    
+    dMinPaired = np.zeros(nI)
     k=[]
     
     for o in range(nA):
@@ -101,6 +104,7 @@ def write_dualMap(Aout, Vin):
               
         if not minID in k:
             VinPaired[minID] = o
+            dMinPaired[minID] = dmin
             k.append(minID)
         else:
                 sub = np.delete(np.arange(nI),k)
@@ -114,6 +118,7 @@ def write_dualMap(Aout, Vin):
                         minID = i
                 
                 VinPaired[minID] = o
+                dMinPaired[minID] = dmin
                 k.append(minID)
 
     unVI = np.delete(np.arange(nI),k)
@@ -127,19 +132,104 @@ def write_dualMap(Aout, Vin):
                 dmin = dnow
                 minID = o
         VinPaired[i] = minID
+        dMinPaired[i] = dmin
     
-    mapp = "Map Indices: Aout, Paired Vin(s) \n"
+    with open("outlets_radius_A.txt","r") as oletsA:
+        oLETSA = [line.rstrip('\n') for line in oletsA]
+        oLETSA = [float(i.split(',')[1]) for i in oLETSA]
+        oletsA.close()
+
+    with open("inlets_radius_B.txt","r") as iletsB:
+        iLETSB = [line.rstrip('\n') for line in iletsB]
+        iLETSB = [float(i.split(',')[1]) for i in iLETSB]
+        iletsB.close()
+
+    mapp = "Map Indices: Aout (index, radius) then Paired Vin(s) (index, distance, radius) \n"
     for o in range(nA):
-        mapp += str(o)
+        mapp += "(" + str(o+1) + "," + str(oLETSA[o]) + ")"
         for i in range(nI):
-            if VinPaired[i] == o: mapp += "," + str(i)
+            if VinPaired[i] == o: mapp += ", ( " + str(i+1) + "," + str(dMinPaired[i]) + "," + str(iLETSB[i]) + ")"
         mapp += "\n"
     
-    with open("mapAtoV.txt", "w") as outMap:
+    with open("mapAtoB.txt", "w") as outMap:
         outMap.write(mapp)
 
+def NetworkCalc(r0,r1,L,ratio,scale):
+    # Computation of network of vessels between outlet and an inlet
+    # r0 = radius of outlet
+    # r1 = radius of inlet being connected
+    # ratio = rate at which daughter branches are narrowed compared to parent
+    # scale = length of each branch segment - L = scale*radius_atlevel
 
+    if L>scale*(r0+r1)/(1-ratio):
+        print("Length check failed")
+        exit()
 
+    Lrem = L - scale*(r0+r1)
+    branches_a = [r0]
+    branches_v = [r1]
+
+    d=0
+    while Lrem >= 0.0:
+        d = d+1
+        dA = ratio*branches_a[-1]
+        dV = ratio*branches_v[-1]
+        print( "daughter level", d)
+        print( "dA = ", dA, "; dV = ", dV)
+        Lrem = Lrem - scale*(dA+dV)
+        print( Lrem)
+
+        if Lrem < 0.0:
+            Lrem = Lrem + scale*(dA+dV)
+            d = d-1
+            print( "Extra straight connection of ", Lrem, "at daughter layer", d)
+            break
+
+        if (max(dA,dV)<1e-6):
+            print( "Effective Connection Reached")
+            break
+        
+        branches_a.append(dA)
+        branches_v.append(dV)
+
+    print( branches_a)
+    print( branches_v)
+
+    rla = 0; la = 0;
+    j=0
+    for i in branches_a:
+        rla = rla + scale*i*i*2**j
+        la = la + scale*i*2**j
+        j = j+1
+        
+    rla = rla+Lrem*ratio*(branches_a[-1] + branches_v[-1])*2**(j-1)
+    la = la+ratio*Lrem*2**(j-1)
+    print( "average artery radius = ", rla/la)
+
+    rlv = 0; lv = 0; j=0
+    for i in branches_v:
+        rlv = rlv + scale*i*i*2**j
+        lv = lv + scale*i*2**j
+        j = j+1
+        
+    rlv = rlv+Lrem*ratio*(branches_a[-1] + branches_v[-1])*2**(j-1)
+    lv = lv+ratio*Lrem*2**(j-1)
+    print( "average vein radius = ", rlv/lv)
+
+    effR = (rla + rlv)/(la + lv)
+    effL = la + lv
+
+    if d == 0:
+        effR = 0.5*(branches_a[0] + branches_v[0])
+        effL = L
+    
+    print( "average vessel radius = ", effR)
+    print( "effective length = ", effL)
+
+    print( "effective volume = ", np.pi*effR*effR*effL)
+    print( "\n")
+    return [effR, effL, np.pi*effR*effR*effL]
+#
 
 if len(sys.argv) != 12:
     sys.exit("Usage: python3 hemepureDualpipeline.py  STLFNAME_A STLUNITS_A(e.g 1e-3 for mm) INLETPOSITIONS_A(X1,Y1,Z1;X2,Y2,Z2;..., (in quotes)) NUMINLETS_A NUMOUTLETS_A STLFNAME_B STLUNITS_B(e.g 1e-3 for mm) INLETPOSITIONS_B(X1,Y1,Z1;X2,Y2,Z2;... (in quotes)) NUMINLETS_B NUMOUTLETS_B RESOLUTION(stupid palabos units e.g. 150)")
@@ -332,10 +422,14 @@ print("inlets B", inletsB)
 execute("mpirun -np " + str(NUMRANKS) + " " + VOXELIZERPATH + " " + xmlfname_A + "\n")
 execute("cat fluidAndLinks_*.dat > fluidAndLinksA.dat && rm fluidAndLinks_*.plb && rm fluidAndLinks_*.dat")
 execute("mv iolets_block_inputxml.txt iolets_block_inputxml_A.txt")
+execute("mv inlets_radius.txt inlets_radius_A.txt")
+execute("mv outlets_radius.txt outlets_radius_A.txt")
 
 execute("mpirun -np " + str(NUMRANKS) + " " + VOXELIZERPATH + " " + xmlfname_B + "\n")
 execute("cat fluidAndLinks_*.dat > fluidAndLinksB.dat && rm fluidAndLinks_*.plb && rm fluidAndLinks_*.dat")
 execute("mv iolets_block_inputxml.txt iolets_block_inputxml_B.txt")
+execute("mv inlets_radius.txt inlets_radius_B.txt")
+execute("mv outlets_radius.txt outlets_radius_B.txt")
 
 ### MESH A
 # Get the inlets and outlets xml blocks (for the hemelb input xml) output by the voxelizer
@@ -369,6 +463,68 @@ execute("bash " + MAKEGMYMPIPATH + " fluidAndLinksB.dat " + gmyfname_B  + " " + 
 # write mapping of outlets to inlets
 print("Calculating and writing outlet/inlet mapping")
 write_dualMap(outletsA,inletsB)
+
+# compute boundary relationship values based on geometric values and outlet pressure (P0) and flow rate (Q0)
+mu = 0.1666666 #3.5e-3 = Physical units, lattice units = 0.1666666(?)
+frict = 1.3 #1.5 for turbulent, 1.0 for laminar
+scale = 50 #typical value
+ratio = 0.5 # Murray Law splitting
+
+flow = "Flow Rate scale factors: \n"
+pressure = "dP scale factors: \n"
+
+
+with open("mapAtoB.txt") as theMap:
+    next(theMap)
+    for line in theMap:
+
+        line = line.strip("\n").strip("(").strip(")").split("), (")
+        outletData = [float(x) for x in line[0].split(",")]
+        r0 = outletData[1]
+        outletIDX = outletData[0]
+
+        rInlets = np.zeros(len(line)-1)
+        L_Inlets = np.zeros(len(line)-1)
+        inletIDX = np.zeros(len(line)-1)
+        for out in range(1,len(line)):
+            inletData = [float(x) for x in line[out].split(",")]
+            rInlets[out-1] = inletData[2]
+            L_Inlets[out-1] = inletData[1]
+            inletIDX[out-1] = inletData[0]
+
+        A = np.zeros(len(rInlets))
+        k = np.zeros(len(rInlets))
+        v = np.zeros(len(rInlets))
+
+        for i in range(len(rInlets)):
+            print("Branch from outlet", outletIDX, "to inlet", inletIDX[i])
+            r,e1,vol = NetworkCalc(r0,rInlets[i], L_Inlets[i],ratio,scale)
+
+            A[i] = np.pi*r*r
+            k[i] = (8*np.pi * mu)/(A[i]*A[i])
+            v[i] = vol
+
+
+        q = np.divide(v,np.sum(v))
+        dP = frict*np.multiply(np.multiply(q,L_Inlets),k)
+
+        print("WARNING - will need to run dP check in hemeLB to ensure ok")
+        print( "Factors")
+        print( "Q = ",q,"*Q0 ")
+        print( "dP = ", dP,"*Q0 [L.U.]")
+        
+        for i in range(len(rInlets)):
+            flow += str(int(outletIDX)) + "," + str(int(inletIDX[i])) + "," + str(q[i]) + "\n"
+            pressure += str(int(outletIDX)) + "," + str(int(inletIDX[i])) + "," + str(dP[i]) + "\n"
+
+with open("flowFactors.txt", "w") as factors:
+    factors.write(flow)
+factors.close()
+
+with open("dPFactors.txt", "w") as factors:
+    factors.write(pressure)
+factors.close()
+
 
 ## Create the velocity weights file - WARNING: CURRENTLY ASSUMES ONLY 1 INLET (not easy to fix...)
 #inletsfname = ROOTNAME + ".inlets"
