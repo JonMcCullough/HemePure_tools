@@ -286,14 +286,16 @@ write_voxelizer_xml(xmlfname_B, RESOLUTION, STLFNAME_B, inletpos1, outletpos1)
 
 # Run voxelizer but end early, dumping only the ioletpositions
 execute("mpirun -np " + str(NUMRANKS) + " " + VOXELIZERPATH + " " + xmlfname_A + "  ENDEARLY\n")
+execute("mv ioletpositions.txt ioletpositions_A.txt")
 execute("mpirun -np " + str(NUMRANKS) + " " + VOXELIZERPATH + " " + xmlfname_B + "  ENDEARLY\n")
+execute("mv ioletpositions.txt ioletpositions_B.txt")
 
 ### MESH A
 print("\n IOlets for Mesh A...")
 iolet_list = []
 dx = None
 shifts = None
-with open("ioletpositions.txt", "r") as ioletpos:
+with open("ioletpositions_A.txt", "r") as ioletpos:
     lines = ioletpos.readlines()
 
     # Get the real resolution
@@ -307,7 +309,7 @@ with open("ioletpositions.txt", "r") as ioletpos:
         sys.exit("ioletpositions.txt output from voxelizer does not have DX: line where expected (first line)")
     shifts = np.array([float(i) for i in lines[1].split()[1:]])
     print("shifts = ", shifts)
-
+    
     # Get the iolet positions
     for line in lines[2:]:
         ioletpos = [float(i) for i in line.split()]
@@ -346,7 +348,8 @@ for ioindex, ioletpos in enumerate(iolet_list):
     else:
         inletposlist.append(ioletpos)
 
-outletsA = outletposlist
+#outletsA = outletposlist
+outletsA = [i-shifts for i in outletposlist];
 # Write the second version of the voxelizer's xml, in which the inlet and outlet positions are correctly identified and ordered
 write_voxelizer_xml(xmlfname_A, RESOLUTION, STLFNAME_A, inletposlist, outletposlist)
 
@@ -356,7 +359,7 @@ print("\n IOlets for Mesh B...")
 iolet_list = []
 dx = None
 shifts = None
-with open("ioletpositions.txt", "r") as ioletpos:
+with open("ioletpositions_B.txt", "r") as ioletpos:
     lines = ioletpos.readlines()
 
     # Get the real resolution
@@ -370,7 +373,7 @@ with open("ioletpositions.txt", "r") as ioletpos:
         sys.exit("ioletpositions.txt output from voxelizer does not have DX: line where expected (first line)")
     shifts = np.array([float(i) for i in lines[1].split()[1:]])
     print("shifts = ", shifts)
-
+    
     # Get the iolet positions
     for line in lines[2:]:
         ioletpos = [float(i) for i in line.split()]
@@ -411,7 +414,8 @@ for ioindex, ioletpos in enumerate(iolet_list):
     else:
         inletposlist.append(ioletpos)
 
-inletsB = inletposlist;
+#inletsB = inletposlist;
+inletsB = [i-shifts for i in inletposlist];
 # Write the second version of the voxelizer's xml, in which the inlet and outlet positions are correctly identified and ordered
 write_voxelizer_xml(xmlfname_B, RESOLUTION, STLFNAME_B, inletposlist, outletposlist)
 
