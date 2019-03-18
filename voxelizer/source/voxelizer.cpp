@@ -502,9 +502,10 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 			inletnumber++;
 			myfile <<
 				"    <inlet>\n"
-				"      <condition type=\"velocity\" subtype=\"file\">\n"
-				"        <path value=\"INLET" << inletnumber << "_VELOCITY.txt\"/>\n"
-				"        <radius value=\"0.15e-3\" units=\"m\"/>\n"
+				"      <!-- index value=" << inletnumber-1 << "-->\n"
+				"      <condition type=\"velocity\" subtype=\"parabolic\">\n"
+				"        <radius value=\"" << 0.5*(openings[i].innerRadius + openings[i].outerRadius)*dx << "\" units=\"m\"/>\n"
+				"        <maximum value=\"CHANGE\" units=\"m/s\"/>\n"
 				"      </condition>\n"
 				"      <normal units=\"dimensionless\" value=\"(" <<
 				openings[i].normal[0] << "," << openings[i].normal[1] << "," << openings[i].normal[2] << ")\"/>\n"
@@ -515,11 +516,15 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 	}
 	myfile << "  </inlets>\n";
 	myfile << "  <outlets>\n";
+	inletnumber = 0;
 	for (pluint i = 0; i < num_openings; ++i) {
 		if (openings[i].type == 3) { // outlets
+			inletnumber++;
 			myfile <<
 				"    <outlet>\n"
+				"      <!-- index value=" << inletnumber-1 << " -->\n"
 				"      <condition subtype=\"cosine\" type=\"pressure\">\n"
+				"      <index value=\"" << i << "\" units=\"dimensionless\"/>\n"
 				"        <amplitude units=\"mmHg\" value=\"0.0\"/>\n"
 				"        <mean units=\"mmHg\" value=\"0.0\"/>\n"
 				"        <phase units=\"rad\" value=\"0.0\"/>\n"

@@ -46,15 +46,16 @@ def write_voxelizer_xml(xmlfname, RESOLUTION, STLFNAME, inletposlist, outletposl
     with open(xmlfname, "w") as outxml:
         outxml.write(xml)
 
-def write_heme_xml(hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt):
+def write_heme_xml(meshID, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt, originShift):
     xml =  "<?xml version=\"1.0\"?>\n"
     xml += "<hemelbsettings version=\"3\">\n"
+    xml += "<!-- Mesh Number = " + str(meshID) + " -->\n"
     xml += "  <simulation>\n"
     xml += "    <step_length units=\"s\" value=\"CHANGE\"/>\n"
     xml += "    <steps units=\"lattice\" value=\"CHANGE\"/>\n"
     xml += "    <stresstype value=\"1\"/>\n"
     xml += "    <voxel_size units=\"m\" value=\"" + str(gmy_resolution) + "\"/>\n"
-    xml += "    <origin units=\"m\" value=\"(0.0,0.0,0.0)\"/>\n"
+    xml += "    <origin units=\"m\" value=\"(" + str(originShift[0]) + "," + str(originShift[1]) + "," + str(originShift[2]) + ")\"/>\n"
     xml += "  </simulation>\n"
     xml += " <geometry>\n"
     xml += "    <datafile path=\"" + gmyfname + "\"/>\n"
@@ -68,18 +69,29 @@ def write_heme_xml(hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt):
     xml += "    <incompressibility/>\n"
     xml += "  </monitoring>\n\n"
     xml += ioletsblocktxt + "\n"
-    xml += "  <visualisation>"
-    xml += "     <centre units=\"m\" value=\"(0.0,0.0,0.0)\" />"
+    xml += "  <!-- <visualisation>\n"
+    xml += "     <centre units=\"m\" value=\"(0.0,0.0,0.0)\" />\n"
     xml += "     <orientation>"
-    xml += "       <longitude units=\"deg\" value=\"45.0\" />"
-    xml += "       <latitude units=\"deg\" value=\"45.0\" />"
-    xml += "     </orientation>"
-    xml += "     <display brightness=\"0.03\" zoom=\"1.0\" />"
-    xml += "     <range>"
-    xml += "       <maxvelocity units=\"m/s\" value=\"0.1\" />"
-    xml += "       <maxstress units=\"Pa\" value=\"0.1\" />"
-    xml += "     </range>"
-    xml += "   </visualisation>"
+    xml += "       <longitude units=\"deg\" value=\"45.0\" />\n"
+    xml += "       <latitude units=\"deg\" value=\"45.0\" />\n"
+    xml += "     </orientation>\n"
+    xml += "     <display brightness=\"0.03\" zoom=\"1.0\" />\n"
+    xml += "     <range>\n"
+    xml += "       <maxvelocity units=\"m/s\" value=\"0.1\" />\n"
+    xml += "       <maxstress units=\"Pa\" value=\"0.1\" />\n"
+    xml += "     </range>\n"
+    xml += "   </visualisation> --> \n"
+    xml += "    <properties>\n"
+    xml += "   <propertyoutput file=\"coupled\" period=\"100\">\n"
+    xml += "    <geometry type=\"outlet\" />\n"
+    xml += "     <field type=\"coupled\" />\n"
+    xml += "   </propertyoutput>\n"
+    xml += "   <propertyoutput file=\"outlet.dat\" period=\"100\">\n"
+    xml += "     <geometry type=\"outlet\" />\n"
+    xml += "     <field type=\"velocity\" />\n"
+    xml += "     <field type=\"pressure\" />\n"
+    xml += "   </propertyoutput>\n"
+    xml += "  </properties>\n"
     xml += "</hemelbsettings>\n";
 
     with open(hemexmlfname, "w") as outxml:
@@ -143,68 +155,104 @@ def write_dualMap(outN, inN):
             if VinPaired[i] == o: mapp += ", ( " + str(i) + "," + str(dMinPaired[i]) + "," + str(iRadDict[inN][i]) + ")"
         mapp += "\n"
 
-    with open("mapAtoB.txt", "w") as outMap:
+    with open("mapMesh" + str(outN) + "to" + str(inN) + ".txt", "w") as outMap:
         outMap.write(mapp)
 
+
+def write_scalingMapFile(outN, inN):
+
+    scalefile = "Scale file: outletMeshID outletIDX inletMeshIDX (inletIDX velocityScaleFactor pressureScaleFactor)_repeatedForAllInlets: \n"
+    
+    with open("mapMesh" + str(outN) + "to" + str(inN) + ".txt") as theMap:
+        next(theMap)
+        for line in theMap:
+            line = line.strip("\n").strip("(").strip(")").split("), (")
+            outletData = [float(x) for x in line[0].split(",")]
+            outletIDX = outletData[0]
+            R02 = outletData[1]**2
+
+            rInlets = np.zeros(len(line)-1)
+            L_Inlets = np.zeros(len(line)-1)
+            inletIDX = np.zeros(len(line)-1)
+            for out in range(1,len(line)):
+                inletData = [float(x) for x in line[out].split(",")]
+                rInlets[out-1] = inletData[2]
+                L_Inlets[out-1] = inletData[1]
+                inletIDX[out-1] = inletData[0]
+        
+            R2 = rInlets**2
+            
+            print("r0 = ", R02)
+            print("r = ", R2)
+            print("L = ", L_Inlets)
+            
+            if (len(rInlets) == 1 and L_Inlets[0] == 0.0):
+                DP = np.zeros(len(rInlets))
+                q = np.ones(len(rInlets))
+                print("Special case - direct mapping (1:1) between meshes -> DP = 0, q = 1")
+                print("Pressure drop distribution = ", DP)
+                print("Scale factors for velocity = ", q)
+
+            else:
+                DP = np.random.uniform(0.3, 0.7,len(rInlets)) ## Arbitrary calculation of pressure drop
+                q = (R02/R2)*(DP/DP[0]*L_Inlets[0]/L_Inlets*R2/R2[0])*(np.sum(DP/DP[0]*L_Inlets[0]/L_Inlets*R2/R2[0]))**-1 
+                print("Pressure drop distribution = ", DP)
+                print("Scale factors for velocity = ", q)
+
+
+            scalefile += str(int(outN)) + "," + str(int(outletIDX)) + "," + str(int(inN))
+
+            for i in range(len(rInlets)):
+                scalefile += "," + str(int(inletIDX[i])) + "," + str(q[i]) + "," + str(DP[i]) 
+            scalefile += "\n"
+    theMap.close()
+
+    with open("scalingMap" + str(outN) + "to" + str(inN) + ".txt", "w") as factors:
+        factors.write(scalefile)
+    factors.close()
+
+
+
+
 ####
-if len(sys.argv) != 12:
-    sys.exit("Usage: python3 hemepureDualpipeline.py  STLFNAME_A STLUNITS_A(e.g 1e-3 for mm) INLETPOSITIONS_A(X1,Y1,Z1;X2,Y2,Z2;..., (in quotes)) NUMINLETS_A NUMOUTLETS_A STLFNAME_B STLUNITS_B(e.g 1e-3 for mm) INLETPOSITIONS_B(X1,Y1,Z1;X2,Y2,Z2;... (in quotes)) NUMINLETS_B NUMOUTLETS_B RESOLUTION(stupid palabos units e.g. 150)")
+if len(sys.argv) != int(sys.argv[1])*6+3:
+    sys.exit("Usage: python3 hemepureNMeshpipeline.py NumMESHES MapORDER(as list of pairs 'outIDX,inIDX,out...'; first mesh to follow here is regarded as 0; set as '0,0' if doing single mesh only) {STLFNAME_A STLUNITS_A(e.g 1e-3 for mm) INLETPOSITIONS_A(X1,Y1,Z1;X2,Y2,Z2;..., (in quotes)) NUMINLETS_A NUMOUTLETS_A RESOLUTION_A (e.g. 150 - palabos units)} repeat part in curly braces for each mesh being analysed")
 
-STLFNAME_A = sys.argv[1]
-STLUNITS_A = float(sys.argv[2])
-INLETS_A = [np.float_(iolet.split(",")) for iolet in (sys.argv[3]).split(";")]
-NUMINLETS_A = int(sys.argv[4])
-NUMOUTLETS_A = int(sys.argv[5])
+numMeshes = int(sys.argv[1])
+outletMeshes = [int(i) for i in (sys.argv[2]).split(',')][0::2]
+inletMeshes = [int(i) for i in (sys.argv[2]).split(',')][1::2]
 
-STLFNAME_B = sys.argv[6]
-STLUNITS_B = float(sys.argv[7])
-INLETS_B = [np.float_(iolet.split(",")) for iolet in (sys.argv[8]).split(";")]
-NUMINLETS_B = int(sys.argv[9])
-NUMOUTLETS_B = int(sys.argv[10])
+if numMeshes-1 != max(max(outletMeshes), max(inletMeshes)):
+    sys.exit("Potential error in input -> number of meshes not match number of mapped meshes")
 
-RESOLUTION = int(sys.argv[11])
+if len(outletMeshes) != len(inletMeshes):
+    sys.exit("Potential error in mapping input -> number of inlets/outlets do not match")
 
-ROOTNAME_A = os.path.splitext(os.path.basename(STLFNAME_A))[0]
-ROOTNAME_B = os.path.splitext(os.path.basename(STLFNAME_B))[0]
-
-print("Arterial Tree Values")
-print("STLFNAME = ", STLFNAME_A)
-print("STLUNITS = ", STLUNITS_A)
-print("INLETS = ", INLETS_A)
-print("NUMINLETS = ", NUMINLETS_A)
-print("NUMOUTLETS = ", NUMOUTLETS_A)
-print("RESOLUTION = ", RESOLUTION)
-
-print("ROOTNAME = ", ROOTNAME_A)
-
-
-print("Venous Tree Values")
-print("STLFNAME = ", STLFNAME_B)
-print("STLUNITS = ", STLUNITS_B)
-print("INLETS = ", INLETS_B)
-print("NUMINLETS = ", NUMINLETS_B)
-print("NUMOUTLETS = ", NUMOUTLETS_B)
-print("RESOLUTION = ", RESOLUTION)
-
-print("ROOTNAME = ", ROOTNAME_B)
-
-numMeshes = 2
 inletDict={}
 outletDict={}
 iRadDict={}
 oRadDict={}
 
 for mesh in range(numMeshes):
-    STLFNAME = sys.argv[1+mesh*5]
-    STLUNITS = float(sys.argv[2+mesh*5])
-    INLETS = [np.float_(iolet.split(",")) for iolet in (sys.argv[3+mesh*5]).split(";")]
-    NUMINLETS = int(sys.argv[4+mesh*5])
-    NUMOUTLETS = int(sys.argv[5+mesh*5])
-    
+    STLFNAME = sys.argv[3+mesh*6]
+    STLUNITS = float(sys.argv[4+mesh*6])
+    INLETS = [np.float_(iolet.split(",")) for iolet in (sys.argv[5+mesh*6]).split(";")]
+    NUMINLETS = int(sys.argv[6+mesh*6])
+    NUMOUTLETS = int(sys.argv[7+mesh*6])
+    RESOLUTION = int(sys.argv[8+mesh*6])
+
     ROOTNAME = os.path.splitext(os.path.basename(STLFNAME))[0]
 
-    
-    
+    print("Values for mesh ", mesh)
+    print("STLFNAME = ", STLFNAME)
+    print("STLUNITS = ", STLUNITS)
+    print("INLETS = ", INLETS)
+    print("NUMINLETS = ", NUMINLETS)
+    print("NUMOUTLETS = ", NUMOUTLETS)
+    print("RESOLUTION = ", RESOLUTION)
+
+    print("ROOTNAME = ", ROOTNAME)
+
     print("Writing initial xml...")
     xmlfname = ROOTNAME + ".xml"
 
@@ -241,6 +289,10 @@ for mesh in range(numMeshes):
 
     # Work out the inlet positions (provided to this script) in lattice units
     INLETS_LATTICE = [transform_to_lattice(inletpos, dx, shifts) for inletpos in INLETS]
+    
+    if mesh == 0:
+        shiftMaster = dx*shifts
+
 
     # Identify the closest iolets to the iolet positions passed to this script
     inlets_list = []
@@ -308,57 +360,18 @@ for mesh in range(numMeshes):
     hemexmlfname = "input_"+str(mesh)+".xml"
     gmyfname = ROOTNAME + ".gmy"
     gmy_resolution = dx * STLUNITS
-    write_heme_xml(hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt)
+    write_heme_xml(mesh, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt, dx*shifts - shiftMaster)
 
     # Convert the voxelizer output into a hemelb gmy file
     execute("bash " + MAKEGMYMPIPATH + " fluidAndLinks"+str(mesh)+".dat " + gmyfname  + " " + str(NUMRANKS) + " " + str(VX2GMY_CHUNKSIZE) + "\n")
+##################
 
 # write mapping of outlets to inlets
-print("Calculating and writing outlet/inlet mapping")
-write_dualMap(0,1)
+print("Calculating and writing outlet/inlet mappings")
 
-flow = "Velocity scale factors (*V_out): \n"
-pressure = "dP scale factors (*P_out): \n"
-
-with open("mapAtoB.txt") as theMap:
-    next(theMap)
-    for line in theMap:
-        line = line.strip("\n").strip("(").strip(")").split("), (")
-        outletData = [float(x) for x in line[0].split(",")]
-        outletIDX = outletData[0]
-        R02 = outletData[1]**2
-
-        rInlets = np.zeros(len(line)-1)
-        L_Inlets = np.zeros(len(line)-1)
-        inletIDX = np.zeros(len(line)-1)
-        for out in range(1,len(line)):
-            inletData = [float(x) for x in line[out].split(",")]
-            rInlets[out-1] = inletData[2]
-            L_Inlets[out-1] = inletData[1]
-            inletIDX[out-1] = inletData[0]
-    
-        DP = np.random.uniform(0.3, 0.7,len(rInlets)) ## Arbitrary calculation of pressure drop
-        print("Pressure drop distribution = ", DP)
-        R2 = rInlets**2
-        
-        print("r0 = ", R02)
-        print("r = ", R2)
-        print("L = ", L_Inlets)
-        q = (R02/R2)*(DP/DP[0]*L_Inlets[0]/L_Inlets*R2/R2[0])*(np.sum(DP/DP[0]*L_Inlets[0]/L_Inlets*R2/R2[0]))**-1
-
-        for i in range(len(rInlets)):
-            flow += str(int(outletIDX)) + "," + str(int(inletIDX[i])) + "," + str(q[i]) + "\n"
-            pressure += str(int(outletIDX)) + "," + str(int(inletIDX[i])) + "," + str(DP[i]) + "\n"
-
-with open("velocityFactors.txt", "w") as factors:
-    factors.write(flow)
-factors.close()
-
-with open("dPFactors.txt", "w") as factors:
-    factors.write(pressure)
-factors.close()
-
-
+for i in range(len(outletMeshes)):
+    write_dualMap(outletMeshes[i],inletMeshes[i])
+    write_scalingMapFile(outletMeshes[i],inletMeshes[i])
 
 
 ## Create the velocity weights file - WARNING: CURRENTLY ASSUMES ONLY 1 INLET (not easy to fix...)
