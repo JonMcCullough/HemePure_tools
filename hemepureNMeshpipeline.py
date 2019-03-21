@@ -55,10 +55,11 @@ def write_heme_xml(meshID, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktx
     xml += "    <steps units=\"lattice\" value=\"CHANGE\"/>\n"
     xml += "    <stresstype value=\"1\"/>\n"
     xml += "    <voxel_size units=\"m\" value=\"" + str(gmy_resolution) + "\"/>\n"
-    xml += "    <origin units=\"m\" value=\"(" + str(originShift[0]) + "," + str(originShift[1]) + "," + str(originShift[2]) + ")\"/>\n"
+    xml += "    <origin units=\"m\" value=\"(0.0,0.0,0.0)\"/>\n"
     xml += "  </simulation>\n"
     xml += " <geometry>\n"
     xml += "    <datafile path=\"" + gmyfname + "\"/>\n"
+    xml += "    <mapping path=\"CHANGE\" value=\"" + str(meshID) + "\"/>\n"
     xml += "  </geometry>\n"
     xml += "  <initialconditions>\n"
     xml += "    <pressure>\n"
@@ -69,19 +70,7 @@ def write_heme_xml(meshID, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktx
     xml += "    <incompressibility/>\n"
     xml += "  </monitoring>\n\n"
     xml += ioletsblocktxt + "\n"
-    xml += "  <!-- <visualisation>\n"
-    xml += "     <centre units=\"m\" value=\"(0.0,0.0,0.0)\" />\n"
-    xml += "     <orientation>"
-    xml += "       <longitude units=\"deg\" value=\"45.0\" />\n"
-    xml += "       <latitude units=\"deg\" value=\"45.0\" />\n"
-    xml += "     </orientation>\n"
-    xml += "     <display brightness=\"0.03\" zoom=\"1.0\" />\n"
-    xml += "     <range>\n"
-    xml += "       <maxvelocity units=\"m/s\" value=\"0.1\" />\n"
-    xml += "       <maxstress units=\"Pa\" value=\"0.1\" />\n"
-    xml += "     </range>\n"
-    xml += "   </visualisation> --> \n"
-    xml += "    <properties>\n"
+    xml += "  <properties>\n"
     xml += "   <propertyoutput file=\"coupled\" period=\"100\">\n"
     xml += "    <geometry type=\"outlet\" />\n"
     xml += "     <field type=\"coupled\" />\n"
@@ -161,7 +150,8 @@ def write_dualMap(outN, inN):
 
 def write_scalingMapFile(outN, inN):
 
-    scalefile = "Scale file: outletMeshID outletIDX inletMeshIDX (inletIDX velocityScaleFactor pressureScaleFactor)_repeatedForAllInlets: \n"
+    #scalefile = "Scale file: outletMeshID outletIDX inletMeshIDX (inletIDX velocityScaleFactor pressureScaleFactor)_repeatedForAllInlets: \n"
+    scalefile=""
     
     with open("mapMesh" + str(outN) + "to" + str(inN) + ".txt") as theMap:
         next(theMap)

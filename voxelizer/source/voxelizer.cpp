@@ -509,9 +509,14 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 				"      </condition>\n"
 				"      <normal units=\"dimensionless\" value=\"(" <<
 				openings[i].normal[0] << "," << openings[i].normal[1] << "," << openings[i].normal[2] << ")\"/>\n"
-				"      <position units=\"m\" value=\"(" <<
-				(openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
-				"    </inlet>\n";
+				// Lattice Units
+				"      <position units=\"lattice\" value=\"(" <<
+				openings[i].center[0] << "," << openings[i].center[1] << "," << openings[i].center[2] << ")\"/>\n"
+				"    </outlet>\n";
+				//// Physical Units
+				// "      <position units=\"m\" value=\"(" <<
+				// (openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
+				// "    </outlet>\n";
 		}
 	}
 	myfile << "  </inlets>\n";
@@ -524,7 +529,6 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 				"    <outlet>\n"
 				"      <!-- index value=" << inletnumber-1 << " -->\n"
 				"      <condition subtype=\"cosine\" type=\"pressure\">\n"
-				"      <index value=\"" << i << "\" units=\"dimensionless\"/>\n"
 				"        <amplitude units=\"mmHg\" value=\"0.0\"/>\n"
 				"        <mean units=\"mmHg\" value=\"0.0\"/>\n"
 				"        <phase units=\"rad\" value=\"0.0\"/>\n"
@@ -532,9 +536,14 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 				"      </condition>\n"
 				"      <normal units=\"dimensionless\" value=\"(" <<
 				openings[i].normal[0] << "," << openings[i].normal[1] << "," << openings[i].normal[2] << ")\"/>\n"
-				"      <position units=\"m\" value=\"(" <<
-				(openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
+				// Lattice Units
+				"      <position units=\"lattice\" value=\"(" <<
+				openings[i].center[0] << "," << openings[i].center[1] << "," << openings[i].center[2] << ")\"/>\n"
 				"    </outlet>\n";
+				//// Physical Units
+				// "      <position units=\"m\" value=\"(" <<
+				// (openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
+				// "    </outlet>\n";
 		}
 	}
 	myfile << "  </outlets>\n";
