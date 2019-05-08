@@ -1,12 +1,12 @@
 import os, sys
 import numpy as np
 
-VOXELIZERPATH = "/cs/heme/HemePure_JM/HemePure_tools/voxelizer/source/voxelizer2 "
+VOXELIZERPATH = "/cs/heme/HemePure_JM/HemePure_tools/voxelizer/source/voxelizer2"
 MAKEGMYMPIPATH = "/cs/heme/HemePure_JM/HemePure_tools/vx2gmy/make_gmy_MPI.sh"
 GMY2INLETSPATH = "~/gmyTools/gmy2inlets/gmy2inlets"
 INFLOWPROFILEBUILDERPATH = "~/inflow-profile-builder/inflow.py"
 
-NUMRANKS = 2
+# NUMRANKS = 6
 VX2GMY_CHUNKSIZE = 2000
 
 def execute(command):
@@ -46,12 +46,12 @@ def write_voxelizer_xml(xmlfname, DXreq, STLFNAME, inletposlist, outletposlist):
     with open(xmlfname, "w") as outxml:
         outxml.write(xml)
 
-def write_heme_xml(meshID, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt, originShift):
+def write_heme_xml(meshID, tauValue, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt, originShift):
     xml =  "<?xml version=\"1.0\"?>\n"
     xml += "<hemelbsettings version=\"3\">\n"
     xml += "<!-- Mesh Number = " + str(meshID) + " -->\n"
     xml += "  <simulation>\n"
-    xml += "    <step_length units=\"s\" value=\"CHANGE\"/>\n"
+    xml += "    <step_length units=\"s\" value= " + str((tauValue - 0.5)*gmy_resolution*gmy_resolution/(12e-6)) + "/>\n"
     xml += "    <steps units=\"lattice\" value=\"CHANGE\"/>\n"
     xml += "    <stresstype value=\"1\"/>\n"
     xml += "    <voxel_size units=\"m\" value=\"" + str(gmy_resolution) + "\"/>\n"
@@ -59,7 +59,7 @@ def write_heme_xml(meshID, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktx
     xml += "  </simulation>\n"
     xml += " <geometry>\n"
     xml += "    <datafile path=\"" + gmyfname + "\"/>\n"
-    xml += "    <mapping path=\"CHANGE\" value=\"" + str(meshID) + "\"/>\n"
+    xml += "    <mapping path=\"scalingMapXtoY.txt\" value=\"" + str(meshID) + "\"/>\n"
     xml += "  </geometry>\n"
     xml += "  <initialconditions>\n"
     xml += "    <pressure>\n"
@@ -72,8 +72,13 @@ def write_heme_xml(meshID, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktx
     xml += ioletsblocktxt + "\n"
     xml += "  <properties>\n"
     xml += "   <propertyoutput file=\"coupled\" period=\"100\">\n"
-    xml += "    <geometry type=\"outlet\" />\n"
+    xml += "    <geometry type=\"XXXlet\" />\n"
     xml += "     <field type=\"coupled\" />\n"
+    xml += "   </propertyoutput>\n"
+    xml += "   <propertyoutput file=\"inlet.dat\" period=\"100\">\n"
+    xml += "     <geometry type=\"inlet\" />\n"
+    xml += "     <field type=\"velocity\" />\n"
+    xml += "     <field type=\"pressure\" />\n"
     xml += "   </propertyoutput>\n"
     xml += "   <propertyoutput file=\"outlet.dat\" period=\"100\">\n"
     xml += "     <geometry type=\"outlet\" />\n"
@@ -205,8 +210,11 @@ def write_scalingMapFile(outN, inN):
 
 
 ####
-if len(sys.argv) != int(sys.argv[1])*6+3:
-    sys.exit("Usage: python3 hemepureNMeshpipeline2.py NumMESHES MapORDER(as list of pairs 'outIDX,inIDX,out...'; first mesh to follow here is regarded as 0; set as '0,0' if doing single mesh only) {STLFNAME_A STLUNITS_A(e.g 1e-3 for mm) INLETPOSITIONS_A(X1,Y1,Z1;X2,Y2,Z2;..., (in quotes)) NUMINLETS_A NUMOUTLETS_A DXreq_A (e.g. 150 - palabos units)} repeat part in curly braces for each mesh being analysed")
+if len(sys.argv) != int(sys.argv[1])*6+5:
+    sys.exit("Usage: python3 hemepureNMeshpipeline2.py NumMESHES MapORDER(as list of pairs 'outIDX,inIDX,out...'; first mesh to follow here is regarded as 0; set as '0,0' if doing single mesh only) {STLFNAME_A STLUNITS_A(e.g 1e-3 for mm) INLETPOSITIONS_A(X1,Y1,Z1;X2,Y2,Z2;..., (in quotes)) NUMINLETS_A NUMOUTLETS_A DXreq_A } NUMRANKS tauDesired; repeat part in curly braces for each mesh being analysed")
+
+NUMRANKS = int(sys.argv[-2])
+tauDes = float(sys.argv[-1])
 
 numMeshes = int(sys.argv[1])
 outletMeshes = [int(i) for i in (sys.argv[2]).split(',')][0::2]
@@ -350,7 +358,7 @@ for mesh in range(numMeshes):
     hemexmlfname = "input_"+str(mesh)+".xml"
     gmyfname = ROOTNAME + ".gmy"
     gmy_resolution = dx * STLUNITS
-    write_heme_xml(mesh, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt, dx*shifts - shiftMaster)
+    write_heme_xml(mesh, tauDes, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt, dx*shifts - shiftMaster)
 
     # Convert the voxelizer output into a hemelb gmy file
     execute("bash " + MAKEGMYMPIPATH + " fluidAndLinks"+str(mesh)+".dat " + gmyfname  + " " + str(NUMRANKS) + " " + str(VX2GMY_CHUNKSIZE) + "\n")

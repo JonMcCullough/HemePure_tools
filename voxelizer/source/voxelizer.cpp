@@ -512,11 +512,11 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 				// Lattice Units
 				"      <position units=\"lattice\" value=\"(" <<
 				openings[i].center[0] << "," << openings[i].center[1] << "," << openings[i].center[2] << ")\"/>\n"
-				"    </outlet>\n";
+				"    </inlet>\n";
 				//// Physical Units
 				// "      <position units=\"m\" value=\"(" <<
 				// (openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
-				// "    </outlet>\n";
+				// "    </inlet>\n";
 		}
 	}
 	myfile << "  </inlets>\n";

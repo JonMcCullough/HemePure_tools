@@ -513,11 +513,11 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 				// Lattice Units
 				"      <position units=\"lattice\" value=\"(" <<
 				openings[i].center[0] << "," << openings[i].center[1] << "," << openings[i].center[2] << ")\"/>\n"
-				"    </outlet>\n";
+				"    </inlet>\n";
 				//// Physical Units
 				// "      <position units=\"m\" value=\"(" <<
 				// (openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
-				// "    </outlet>\n";
+				// "    </inlet>\n";
 		}
 	}
 	myfile << "  </inlets>\n";
@@ -751,14 +751,19 @@ void run(bool endearly)
 {
 	Cuboid<T> cuboid = (*arteryTriangleSet).getBoundingCuboid(); // get the initial bounding box before palabos centres origin to 0
 	
-	plint resolution = (plint)( (cuboid.x1()-cuboid.x0())/dXreq);
+	plint resolution = (plint)(std::round((cuboid.x1()-cuboid.x0())/dXreq));
 
 	DEFscaledMesh<T>* arteryDefMesh =
 		new DEFscaledMesh<T>(*arteryTriangleSet, resolution, referenceDirection, margin, extraLayer);
 	pcout << "-> dx: " << std::setprecision(10) << arteryDefMesh->getDx() << " in units of .stl" << std::endl;
 
 	(*arteryTriangleSet).scale(dXreq/(((cuboid.x1()-cuboid.x0())/(T)(resolution))));
-	pcout << "rescale factor to get dX to fit" << std::setprecision(10) << dXreq/(((cuboid.x1()-cuboid.x0())/(T)(resolution))) << std::endl;
+	pcout << "cuboid length for dX to fit: " << std::setprecision(10) << (cuboid.x1()-cuboid.x0()) << std::endl;
+	pcout << "Resolution calculated for dX to fit: " << std::setprecision(10) << resolution << "and " << (T)(resolution) << std::endl;
+	pcout << "rescale factor to get dX to fit: " << std::setprecision(10) << dXreq/(((cuboid.x1()-cuboid.x0())/(T)(resolution))) << std::endl;
+
+	
+
 	arteryDefMesh =
 		new DEFscaledMesh<T>(*arteryTriangleSet, resolution, referenceDirection, margin, extraLayer);
 	TriangleBoundary3D<T> arteryBoundary(*arteryDefMesh);
