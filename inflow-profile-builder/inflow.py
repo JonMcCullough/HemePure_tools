@@ -12,7 +12,7 @@ if __name__ == "__main__":
 
   #test_data = pd.read_csv("test.csv", delim_whitespace=True)
   test_data = pd.read_csv(sys.argv[1], delim_whitespace=True)
-  test_data.columns = ["x","y","z","site_type"]
+  test_data.columns = ["x","y","z","site_type","iolet_number"]
   adf = pd.DataFrame(test_data, columns=["x","y","z"])
 
 
@@ -47,7 +47,7 @@ if __name__ == "__main__":
   ax.scatter(bdf["x"], bdf["y"], bdf["z"])
 
   #print tdf.loc[[0], ["x","y","z"]]
-  plt.show()
+  #plt.show() #JM Plotting figures won't work on HPC resources
 
   import calculate_distances
   distances = calculate_distances.calculate_distances_from_borders(adf, bdf)
@@ -55,15 +55,20 @@ if __name__ == "__main__":
   import distance_to_velocity_weights
   weights = distance_to_velocity_weights.distance_to_velocity_weights(distances)
 
-  fig = plt.figure()
-  ax = fig.add_subplot(111, projection='3d')
-  ax.scatter(adf["x"], adf["y"], weights)
+  #JM Plotting figures won't work on HPC resources  
+  #fig = plt.figure()
+  #ax = fig.add_subplot(111, projection='3d')
+  #ax.scatter(adf["x"], adf["y"], weights)
 
-  plt.show()
+  #plt.show()
 
-  text_file = open("out.weights.txt", "w")
-  for i in xrange(0, len(adf["x"])):
-    text_file.write("%i %i %i %f\n" % (adf["x"][i], adf["y"][i], adf["z"][i], weights[i]))
+ 
+ 
+  for let in range(0,test_data['iolet_number'].max()+1):
+      text_file = open("out" + str(let) + ".weights.txt", "w")
+      for i in range(0, len(adf["x"])): #JM was xrange
+          if test_data['iolet_number'][i] == let:
+              text_file.write("%i %i %i %f\n" % (adf["x"][i], adf["y"][i], adf["z"][i], weights[i]))
 
-  text_file.close()
+      text_file.close()
 

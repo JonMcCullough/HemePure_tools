@@ -18,7 +18,7 @@ def create_mesh_links(tdf,dist_limit=1.0):
   #convert to matrix for better performance
   xs = pd.DataFrame(tdf, columns=['px', 'py', 'pz']).as_matrix()
 
-  for i in xrange(0,num_sites):
+  for i in range(0,num_sites): #JM was xrange
     links_i = []
     if i%interval == 0:
       print i
@@ -27,7 +27,7 @@ def create_mesh_links(tdf,dist_limit=1.0):
     yi = xs[i][1]
     zi = xs[i][2] 
     # O(N^2) region    
-    for j in xrange(0,num_sites):
+    for j in range(0,num_sites): #JM was xrange
       r = xsi1 - xs[j][0] 
 
       #replaced because it's 50% slower
@@ -47,7 +47,7 @@ def create_mesh_links(tdf,dist_limit=1.0):
     links.append(links_i)
 
   print "diagnostic: printing all lattice sites which have <2 links to neighbours"
-  for i in xrange(0, len(links)):
+  for i in range(0, len(links)): #JM was xrange
     if(len(links[i]) < 2):
       print i, links[i]
       

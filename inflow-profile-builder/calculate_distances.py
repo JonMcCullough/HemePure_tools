@@ -12,8 +12,8 @@ def calculate_distances_from_borders(tdf, border_points):
   distances = np.zeros((len(tdfa),1))
   distances.fill(1000000.0)
 
-  for i in xrange(0, len(tdfa)):
-    for j in xrange(0, len(tdfb)):
+  for i in range(0, len(tdfa)): #JM was xrange
+    for j in range(0, len(tdfb)): #JM was xrange
       # 1-liner to calculate distance between two points.
       dist = np.linalg.norm(tdfa[i]-tdfb[j])
       if dist < distances[i]:

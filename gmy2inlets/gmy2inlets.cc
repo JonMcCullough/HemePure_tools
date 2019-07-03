@@ -377,7 +377,11 @@ int gmy2inlets(char *fname_gmy, char *fname_inlets)
 	  // Check if site is inlet
 	  if(siteType == 2 || siteType == 4) {
 		  num_inlets_found += 1;
-	          fprintf(outfile, "%d %d %d %d\n", globalX, globalY, globalZ, siteType);
+	          fprintf(outfile, "%d %d %d %d %d\n", globalX, globalY, globalZ, siteType, configEntry);
+	 
+                  //printf("OUTLET - configEntry=%u\n", configEntry);
+		  //printf("OUTLET - wallDistance=%f\n", wallDistance);
+	 
 	  }
 
           globalSiteCounter += 1;

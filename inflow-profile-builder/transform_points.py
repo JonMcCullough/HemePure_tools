@@ -19,7 +19,7 @@ def collapse_to_plane(tdf,a,b,c,d):
   py = []
   pz = []
 
-  for i in xrange(0,len(tdf["x"])):
+  for i in range(0,len(tdf["x"])): #JM was xrange
     dist = calc_dist_to_plane(tdf["x"][i], tdf["y"][i], tdf["z"][i], a, b, c, d)
     norm = np.linalg.norm([a,b,c])
     px.append(tdf["x"][i] - (dist * a/norm))

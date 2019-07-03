@@ -19,7 +19,7 @@ def detect_border_points_in_plane(tdf, links, threshold=10):
 
   # initial border selection
   border_points = np.zeros((0,3))
-  for i in xrange(0, len(xs)):
+  for i in range(0, len(xs)): #JM was xrange
     if len(links[i]) < threshold:
       border_ids.append(i)
 
@@ -32,7 +32,7 @@ def detect_border_points_in_plane(tdf, links, threshold=10):
   #border_ids = tmp_border_ids
 
   # lastly, we populate the border_points array with the final list of border ids.
-  for i in xrange(0, len(border_ids)):
+  for i in range(0, len(border_ids)): #JM was xrange
     border_points = np.vstack((border_points, xs[border_ids[i]]))
 
   return border_points, border_ids
