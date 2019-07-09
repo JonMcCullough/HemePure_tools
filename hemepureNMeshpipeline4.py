@@ -17,13 +17,15 @@ def execute(command):
 
 def transform_to_lattice(pos, dx, shifts):
     return pos/dx + shifts
+    #return (pos + shifts)/dx
 
 def transform_to_physical(pos, dx, shifts):
     return dx*(pos - shifts)
 
-def write_voxelizer_xml(xmlfname, DXreq, STLFNAME, inletposlist, outletposlist):
+def write_voxelizer_xml(xmlfname, dxREL, dxABS, STLFNAME, inletposlist, outletposlist):
     xml = '<?xml version="1.0" ?>\n<!-- the referenceDirection is used for the resolution -->\n<!-- see src/offLattice/triangularSurfaceMesh.hh -->\n<!-- 0 means x-direction, 1 means y-direction and 2 means z-direction -->\n<referenceDirection> 0 </referenceDirection>\n'
-    xml += "<DX> " + str(DXreq) + " </DX>\n"
+    xml += "<resolution> " + str(dxREL) + " </resolution>\n"
+    xml += "<DX> " + str(dxABS) + " </DX>\n"
     xml += "<!-- *.stl containing geometry -->\n"
     xml += "<stl> " + STLFNAME + " </stl>\n"
     xml += "<!-- analysis points for identification of iolets -->\n<!-- first <num_Ilets> points identify inlets -->\n<!-- last <num_Olets> points identify outlets -->\n<analysisPoints> <!-- lattice units -->\n"
@@ -261,7 +263,7 @@ for mesh in range(numMeshes):
 
     inletpos0 = [np.array([0.0,0.0,0.0]) for i in range(NUMINLETS)]
     outletpos0 = [np.array([0.0,0.0,0.0]) for i in range(NUMOUTLETS)]
-    write_voxelizer_xml(xmlfname, DXreq, STLFNAME, inletpos0, outletpos0)
+    write_voxelizer_xml(xmlfname, DXreq/STLUNITS, DXreq, STLFNAME, inletpos0, outletpos0)
 
     # Run voxelizer but end early, dumping only the ioletpositions
     execute("mpirun -np " + str(NUMRANKS) + " " + VOXELIZERPATH + " " + xmlfname + "  ENDEARLY\n")
@@ -277,7 +279,9 @@ for mesh in range(numMeshes):
         if not lines[0].startswith('DX:'):
             sys.exit("ioletpositions.txt output from voxelizer does not have DX: line where expected (first line)")
         dx = float(lines[0].split()[1])
-        print("dx = ", dx)
+        print("dx RELATIVE = ", dx)
+        dx = DXreq #dx*STLUNITS
+        print("dx ABSOLUTE = ", dx)
 
         # Get the shift the voxelizer is applying to the STL
         if not lines[1].startswith('SHIFTS:'):
@@ -331,7 +335,7 @@ for mesh in range(numMeshes):
     outletDict[mesh] = [transform_to_physical(i,dx,shifts) for i in outletposlist]
 
     # Write the second version of the voxelizer's xml, in which the inlet and outlet positions are correctly identified and ordered
-    write_voxelizer_xml(xmlfname, DXreq, STLFNAME, inletposlist, outletposlist)
+    write_voxelizer_xml(xmlfname, DXreq/STLUNITS, DXreq, STLFNAME, inletposlist, outletposlist)
 
     # Run voxelizer to completion this time
     execute("mpirun -np " + str(NUMRANKS) + " " + VOXELIZERPATH + " " + xmlfname + "\n")
@@ -340,8 +344,8 @@ for mesh in range(numMeshes):
 
     with open("inlets_radius.txt","r") as ilets:
         iLETS = [line.rstrip('\n') for line in ilets]
-        iRADS = [dx*float(i.split(',')[1]) for i in iLETS]
-        iARRS = [dx*dx*float(i.split(',')[2]) for i in iLETS]
+        iRADS = [float(i.split(',')[1]) for i in iLETS]
+        iARRS = [float(i.split(',')[2]) for i in iLETS]
         ilets.close()
    
     iRadDict[mesh]=iRADS
@@ -349,8 +353,8 @@ for mesh in range(numMeshes):
 
     with open("outlets_radius.txt","r") as ilets:
         iLETS = [line.rstrip('\n') for line in ilets]
-        iRADS = [dx*float(i.split(',')[1]) for i in iLETS]
-        iARRS = [dx*dx*float(i.split(',')[2]) for i in iLETS]
+        iRADS = [float(i.split(',')[1]) for i in iLETS]
+        iARRS = [float(i.split(',')[2]) for i in iLETS]
         ilets.close()
 
     oRadDict[mesh]=iRADS
@@ -366,7 +370,7 @@ for mesh in range(numMeshes):
     # Write the hemelb input.xml file
     hemexmlfname = "input_"+str(mesh)+".xml"
     gmyfname = ROOTNAME + ".gmy"
-    gmy_resolution = dx * STLUNITS
+    gmy_resolution = dx #* STLUNITS
     write_heme_xml(mesh, tauDes, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt, dx*shifts) #JM had - shiftMaster here
 
     # Convert the voxelizer output into a hemelb gmy file
