@@ -768,25 +768,29 @@ void run(bool endearly)
 	pcout << "Resolution calculated for dX to fit: " << std::setprecision(10) << resolution << "and " << (T)(resolution) << std::endl;
 	pcout << "rescale factor to get dX to fit: " << std::setprecision(10) << dxREL/(((cuboid.x1()-cuboid.x0())/(T)(resolution))) << std::endl;
 
-
 	
 
 	arteryDefMesh =
 		new DEFscaledMesh<T>(*arteryTriangleSet, resolution, referenceDirection, margin, extraLayer);
 	TriangleBoundary3D<T> arteryBoundary(*arteryDefMesh);
 	pcout << "-> dx: " << std::setprecision(10) << arteryDefMesh->getDx() << " in units of .stl" << std::endl;
-	delete arteryDefMesh;
+	
+	// For reverse transform later
+        //double dx = arteryDefMesh->getDx();
+        double dx = dxABS;
+	double shift_x = -cuboid.x0()/dxREL+3.0, shift_y = -cuboid.y0()/dxREL+3.0, shift_z = -cuboid.z0()/dxREL+3.0;
+
+        // delete arteryDefMesh;
 	arteryBoundary.getMesh().inflate();
 
 	// translate the mesh
 	Array<T,2> xRange, yRange, zRange;
 	arteryBoundary.getMesh().computeBoundingBox(xRange, yRange, zRange);
 	arteryBoundary.getMesh().translate(Array<T,3>(-xRange[0]+3.0,-yRange[0]+3.0,-zRange[0]+3.0));
-
-	// For reverse transform later
-	//double dx = arteryDefMesh->getDx();
-	double dx = dxABS;
-	double shift_x = -cuboid.x0()/dxREL+3.0, shift_y = -cuboid.y0()/dxREL+3.0, shift_z = -cuboid.z0()/dxREL+3.0;
+	
+	// For reverse transform later //JM moved earlier to avoid issues with delete arteryDefMesh line
+	// double dx = arteryDefMesh->getDx();
+	// double shift_x = -cuboid.x0()/dx+3.0, shift_y = -cuboid.y0()/dx+3.0, shift_z = -cuboid.z0()/dx+3.0;
 
 	arterySurfaceMesh = new TriangularSurfaceMesh<T>(arteryBoundary.getMesh());
 
@@ -856,12 +860,20 @@ void run(bool endearly)
 		pcout << "-------> type: (" << openings[i].type << ")" << std::endl;
 
 		ioletfile << openings[i].center[0] << " " << openings[i].center[1] << " " << openings[i].center[2] << std::endl;
+		
+		// if (openings[i].innerRadius < 1.0)
+		if (0.5*(openings[i].innerRadius + openings[i].outerRadius) < 1.0)
+		{
+			ioletfile.close();
+			throw PlbIOException("Average Radius smaller than dx at above location (last point in ioletpostions.txt)");
+		}		
 	}
 	ioletfile.close();
 
 	if(endearly == true) {
 		pcout << "Ending early. Positions were output to ioletpositions.txt" << std::endl;
-		exit(0);
+		// exit(0); //JM Robin's original
+		return;
 	}
 
 	memu();
@@ -895,9 +907,9 @@ int main(int argc, char* argv[])
 {
 	// end early if two arguments are given instead of one
 	bool endearly = false;
-	pcout << argc << std::endl;
+	//pcout << argc << std::endl; //JM Tidy line
 	if(argc == 3) {
-		pcout << "2 arguments given - ending early (after iolets positions dump)";
+		pcout << "2 arguments given - ending early (after iolets positions dump)" << std::endl;
 		endearly = true;
 	}
 

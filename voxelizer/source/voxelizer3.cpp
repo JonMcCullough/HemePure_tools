@@ -206,9 +206,7 @@ struct Opening {
 // -------------------------
 pluint numIlets, numOlets;
 plint referenceDirection = 0;
-T dxREL = 0;
-T dxABS = 0;
-
+T dXreq = 0;
 std::vector<Array<T,3> > analysisPoints;
 // ---
 
@@ -227,8 +225,7 @@ static_assert(sizeof(T) == sizeof(plint), "ERROR: sizeof(double) != sizeof(plint
 void readGeneralParameters(XMLreader const& generalXML)
 {
 	generalXML["referenceDirection"].read(referenceDirection);
-	generalXML["resolution"].read(dxREL);
-	generalXML["DX"].read(dxABS);
+	generalXML["DX"].read(dXreq);
 	generalXML["stl"].read(arteryMeshFileName);
 	generalXML["analysisPoints"]["numIlets"].read(numIlets);
 	generalXML["analysisPoints"]["numOlets"].read(numOlets);
@@ -508,8 +505,7 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 			myfile <<
 				"    <inlet>\n"
 				"      <!-- index value=" << inletnumber-1 << "-->\n"
-				"      <condition type=\"velocity\" subtype=\"file\">\n"
-				"        <path value=\"MESHX_INLET" << inletnumber-1 << "_VELOCITY.txt\"/>\n"
+				"      <condition type=\"velocity\" subtype=\"parabolic\">\n"
 				"        <radius value=\"" << 0.5*(openings[i].innerRadius + openings[i].outerRadius)*dx << "\" units=\"m\"/>\n"
 				"        <area value=\"" << openings[i].area*dx*dx << "\" units=\"m^2\"/>\n"
 				"        <maximum value=\"CHANGE\" units=\"m/s\"/>\n"
@@ -566,7 +562,7 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 	for (pluint i = 0; i < num_openings; ++i) {
 		if (openings[i].type == 2) { // inlets
 			inletnumber++;
-			myfile << inletnumber << "," << 0.5*(openings[i].innerRadius + openings[i].outerRadius)*dx << "," << openings[i].area*dx*dx << "\n";
+			myfile << inletnumber << "," << 0.5*(openings[i].innerRadius + openings[i].outerRadius) << "," << openings[i].area << "\n";
 		}
 	}
 
@@ -578,7 +574,7 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 	for (pluint i = 0; i < num_openings; ++i) {
 		if (openings[i].type == 3) { // outlets
 			inletnumber++;
-			myfile << inletnumber << "," << 0.5*(openings[i].innerRadius + openings[i].outerRadius)*dx << "," << openings[i].area*dx*dx << "\n";
+			myfile << inletnumber << "," << 0.5*(openings[i].innerRadius + openings[i].outerRadius) << "," << openings[i].area << "\n";
 		}
 
 	}
@@ -757,17 +753,16 @@ void run(bool endearly)
 {
 	Cuboid<T> cuboid = (*arteryTriangleSet).getBoundingCuboid(); // get the initial bounding box before palabos centres origin to 0
 	
-	plint resolution = (plint)(std::round((cuboid.x1()-cuboid.x0())/dxREL));
+	plint resolution = (plint)(std::round((cuboid.x1()-cuboid.x0())/dXreq));
 
 	DEFscaledMesh<T>* arteryDefMesh =
 		new DEFscaledMesh<T>(*arteryTriangleSet, resolution, referenceDirection, margin, extraLayer);
 	pcout << "-> dx: " << std::setprecision(10) << arteryDefMesh->getDx() << " in units of .stl" << std::endl;
 
-	(*arteryTriangleSet).scale(dxREL/(((cuboid.x1()-cuboid.x0())/(T)(resolution))));
+	(*arteryTriangleSet).scale(dXreq/(((cuboid.x1()-cuboid.x0())/(T)(resolution))));
 	pcout << "cuboid length for dX to fit: " << std::setprecision(10) << (cuboid.x1()-cuboid.x0()) << std::endl;
 	pcout << "Resolution calculated for dX to fit: " << std::setprecision(10) << resolution << "and " << (T)(resolution) << std::endl;
-	pcout << "rescale factor to get dX to fit: " << std::setprecision(10) << dxREL/(((cuboid.x1()-cuboid.x0())/(T)(resolution))) << std::endl;
-
+	pcout << "rescale factor to get dX to fit: " << std::setprecision(10) << dXreq/(((cuboid.x1()-cuboid.x0())/(T)(resolution))) << std::endl;
 
 	
 
@@ -784,9 +779,8 @@ void run(bool endearly)
 	arteryBoundary.getMesh().translate(Array<T,3>(-xRange[0]+3.0,-yRange[0]+3.0,-zRange[0]+3.0));
 
 	// For reverse transform later
-	//double dx = arteryDefMesh->getDx();
-	double dx = dxABS;
-	double shift_x = -cuboid.x0()/dxREL+3.0, shift_y = -cuboid.y0()/dxREL+3.0, shift_z = -cuboid.z0()/dxREL+3.0;
+	double dx = arteryDefMesh->getDx();
+	double shift_x = -cuboid.x0()/dx+3.0, shift_y = -cuboid.y0()/dx+3.0, shift_z = -cuboid.z0()/dx+3.0;
 
 	arterySurfaceMesh = new TriangularSurfaceMesh<T>(arteryBoundary.getMesh());
 
