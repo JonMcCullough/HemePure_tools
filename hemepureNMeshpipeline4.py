@@ -2,6 +2,7 @@ import os, sys
 import numpy as np
 
 VOXELIZERPATH = "/cs/heme/HemePure_JM/HemePure_tools/voxelizer/source/voxelizer3_file"
+VOXELIZERPATH = "/cs/heme/HemePure_JM/HemePure_tools/voxelizer/source/voxelizer3"
 MAKEGMYMPIPATH = "/cs/heme/HemePure_JM/HemePure_tools/vx2gmy/make_gmy_MPI.sh"
 GMY2INLETSPATH = "/cs/heme/HemePure_JM/HemePure_tools/gmy2inlets/gmy2inlets"
 INFLOWPROFILEBUILDERPATH = "/cs/heme/HemePure_JM/HemePure_tools/inflow-profile-builder/inflow.py"
