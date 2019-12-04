@@ -1,11 +1,10 @@
 import os, sys
 import numpy as np
 
-VOXELIZERPATH = "/cs/heme/HemePure_JM/HemePure_tools/voxelizer/source/voxelizer3_file"
-VOXELIZERPATH = "/cs/heme/HemePure_JM/HemePure_tools/voxelizer/source/voxelizer3"
-MAKEGMYMPIPATH = "/cs/heme/HemePure_JM/HemePure_tools/vx2gmy/make_gmy_MPI.sh"
-GMY2INLETSPATH = "/cs/heme/HemePure_JM/HemePure_tools/gmy2inlets/gmy2inlets"
-INFLOWPROFILEBUILDERPATH = "/cs/heme/HemePure_JM/HemePure_tools/inflow-profile-builder/inflow.py"
+VOXELIZERPATH = "$WORK/HemePure_tools/voxelizer/source/voxelizer3_file_ARCHER"
+MAKEGMYMPIPATH = "$WORK/HemePure_tools/vx2gmy/make_gmy_MPI.sh"
+GMY2INLETSPATH = "$WORK/HemePure_tools/gmy2inlets/gmy2inlets"
+#INFLOWPROFILEBUILDERPATH = "$WORK/HemePure_tools/inflow-profile-builder/inflow.py"
 
 # NUMRANKS = 6
 VX2GMY_CHUNKSIZE = 2000
@@ -193,6 +192,9 @@ def write_scalingMapFile(outN, inN):
                 print("Pressure drop distribution = ", DP)
                 print("Scale factors for velocity = ", q)
 
+            elif (len(rInlets) == 0):
+                print("WARNING - Unconnected outlet at index ", outletIDX)
+
             else:
                 DP = np.random.uniform(0.3, 0.7,len(rInlets)) ## Arbitrary calculation of pressure drop
                 q = (R02/R2)*(DP/DP[0]*L_Inlets[0]/L_Inlets*R2/R2[0])*(np.sum(DP/DP[0]*L_Inlets[0]/L_Inlets*R2/R2[0]))**-1 
@@ -266,7 +268,7 @@ for mesh in range(numMeshes):
     write_voxelizer_xml(xmlfname, DXreq/STLUNITS, DXreq, STLFNAME, inletpos0, outletpos0)
 
     # Run voxelizer but end early, dumping only the ioletpositions
-    execute("mpirun -np " + str(NUMRANKS) + " " + VOXELIZERPATH + " " + xmlfname + "  ENDEARLY\n")
+    execute("aprun -n " + str(NUMRANKS) + " " + VOXELIZERPATH + " " + xmlfname + "  ENDEARLY\n")
     execute("mv ioletpositions.txt ioletpositions_"+str(mesh)+".txt")
 
     iolet_list = []
@@ -338,7 +340,7 @@ for mesh in range(numMeshes):
     write_voxelizer_xml(xmlfname, DXreq/STLUNITS, DXreq, STLFNAME, inletposlist, outletposlist)
 
     # Run voxelizer to completion this time
-    execute("mpirun -np " + str(NUMRANKS) + " " + VOXELIZERPATH + " " + xmlfname + "\n")
+    execute("aprun -n " + str(NUMRANKS) + " -N 1 " + VOXELIZERPATH + " " + xmlfname + "\n")
     execute("cat fluidAndLinks_*.dat > fluidAndLinks"+str(mesh)+".dat && rm fluidAndLinks_*.plb && rm fluidAndLinks_*.dat")
     execute("mv iolets_block_inputxml.txt iolets_block_inputxml_"+str(mesh)+".txt")
 
@@ -364,7 +366,7 @@ for mesh in range(numMeshes):
     #execute("rm inlets_radius.txt")
     execute("mv outlets_radius.txt outlets_radius_"+str(mesh)+".txt")
     #execute("rm outlets_radius.txt")
-    
+
     # Get the inlets and outlets xml blocks (for the hemelb input xml) output by the voxelizer
     with open("iolets_block_inputxml_"+str(mesh)+".txt", "r") as ioletsblockfile:
         ioletsblocktxt = ioletsblockfile.read()
@@ -383,10 +385,10 @@ for mesh in range(numMeshes):
     ## Create the velocity weights file - WARNING: CURRENTLY ASSUMES ONLY 1 INLET (not easy to fix...)
     inletsfname = ROOTNAME + ".inlets"
     execute(GMY2INLETSPATH + " " + gmyfname + " " + inletsfname + "\n")
-    execute("python3 " + INFLOWPROFILEBUILDERPATH + " " + inletsfname + "\n")
+    #execute("python3 " + INFLOWPROFILEBUILDERPATH + " " + inletsfname + "\n")
     
-    for ilet in range(0,NUMINLETS): 
-        execute("cp out" + str(ilet) + ".weights.txt MESH" + str(mesh) + "_INLET" + str(ilet) + "_VELOCITY.txt.weights.txt\n") #JM not right yet - need files named by inlet number not mesh
+    #for ilet in range(0,NUMINLETS): 
+    #    execute("cp out" + str(ilet) + ".weights.txt MESH" + str(mesh) + "_INLET" + str(ilet) + "_VELOCITY.txt.weights.txt\n") #JM not right yet - need files named by inlet number not mesh
 
 ##################
 
@@ -397,4 +399,4 @@ for i in range(len(outletMeshes)):
     write_dualMap(outletMeshes[i],inletMeshes[i])
     write_scalingMapFile(outletMeshes[i],inletMeshes[i])
 
-
+print("ALL DONE NOW")
