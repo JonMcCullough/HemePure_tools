@@ -85,7 +85,7 @@ int main(int argc, char **argv)
     }
 
     uint64_t i = 0;
-    while( fread(record, sizeof(int64_t), size_of_record, vxfile) == size_of_record ) {
+    while( fread(record, 1, size_of_record, vxfile) == size_of_record ) {
         printf("Site %lld :\n", i);
         record_to_ascii(record);
         printf("\n");
