@@ -490,7 +490,7 @@ void write_chunk_to_file(VX *vx, uint64_t offset, uint64_t num_blocks_in_chunk, 
 	}
 
 	for(uint64_t i = 0; i < num_blocks_in_chunk; i++) {
-		//		printf("%u: blockSiteCount %u\n", i, blocks[i].sites->size());
+				printf("block %u: blockSiteCount %u\n", i+offset, blocks[i].sites->size());
 
 		// check for problems (e.g. exceeding max number of sites per block)
 		if(blocks[i].sites->size() > maxSitesPerBlock) {
@@ -519,6 +519,7 @@ void write_chunk_to_file(VX *vx, uint64_t offset, uint64_t num_blocks_in_chunk, 
 			xdr_u_int(&xdrs, &blockSiteCount);
 			xdr_u_int(&xdrs, &blockCompressedLen);
 			xdr_u_int(&xdrs, &blockUncompressedLen);
+
 			continue;
 		}
 
@@ -586,6 +587,57 @@ void write_chunk_to_file(VX *vx, uint64_t offset, uint64_t num_blocks_in_chunk, 
 			}
 		}
 		DEBUGMSG("Block: %lu, blockUncompressedLen: %u\n", i + offset, blockUncompressedLen);
+		
+		if (blockUncompressedLen>65535)
+		{
+			printf("Block: %lu, blockUncompressedLen: %u\n", i + offset, blockUncompressedLen);
+			
+			for (uint64_t ix = 0; ix < blockEdgeLen; ix++) {
+				for (uint64_t iy = 0; iy < blockEdgeLen; iy++) {
+					for (uint64_t iz = 0; iz < blockEdgeLen; iz++) {
+						VX_ENTRY *siteptr = blockData[ix][iy][iz];
+						if(siteptr == NULL) { // if solid
+							printf("Site xyz( %lu, %lu, %lu) is solid", ix, iy, iz); // siteIsSimulated
+						} else { // if fluid	
+							uint32_t localW = 0;	
+							localW += sizeof(uint32_t); // siteIsSimulated
+							int w=0;
+							int io=0;
+							int fl=0;
+							for(uint32_t m = 0; m < 26; m++) {
+							
+								localW += sizeof(uint32_t); // siteIsSimulated
+								uint32_t linkType = siteptr->links[m].linkType;
+								switch (linkType) {
+									case 0: // linkType = FLUID (no further data)
+										fl++;
+										break;
+									case 1: // linkType = WALL (write distance to nearest obstacle)
+										localW += sizeof(float); // siteIsSimulated
+										w++;	
+										break;
+									case 2:
+									case 3: // linkType = INLET or OUTLET (write config ID and distance to nearest obstacle)
+										io++;	
+										localW += sizeof(uint32_t); // siteIsSimulated
+										localW += sizeof(float); // siteIsSimulated
+										break;
+									default:
+										fprintf(stderr, "ERROR: Unrecognised linkType %u.\n", linkType);
+										MPI_Finalize();
+										exit(1);
+								}
+							}
+							uint32_t hasWallNormal = (siteptr->hasWallNormal == true);
+							localW += sizeof(uint32_t); // siteIsSimulated
+							localW += 3*hasWallNormal*sizeof(float); // siteIsSimulated
+						printf("Site xyz( %lu, %lu, %lu) is fluid with w, io, fl, wn (%lu, %lu, %lu, %lu) and local block len %lu \n", ix, iy, iz, w, io, fl, hasWallNormal, localW); // siteIsSimulated
+						}
+					}
+				}
+			}
+
+		}
 
 		// create a new XDR_ENCODE stream on decompressed buffer (of size blockUncompressedLen)
 		xdrmem_create(&xdrbs, (char *) decompressedBuffer, blockUncompressedLen, XDR_ENCODE);
