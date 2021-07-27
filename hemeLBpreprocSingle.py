@@ -1,10 +1,10 @@
 import os, sys
 import numpy as np
 
-VOXELIZERPATH = "/cs/heme/HemePure_JM/HemePure_tools/voxelizer/source/voxelizer3"#_file_ARCHER"
-MAKEGMYMPIPATH = "/cs/heme/HemePure_JM/HemePure_tools/vx2gmy/make_gmy_MPI.sh"
-#GMY2INLETSPATH = "../gmy2inlets/gmy2inlets"
-#INFLOWPROFILEBUILDERPATH = "../inflow-profile-builder/inflow.py"
+VOXELIZERPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/voxelizer/source/voxelizer3_file_ARCHER"
+MAKEGMYMPIPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/vx2gmy/make_gmy_MPI.sh"
+GMY2INLETSPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/gmy2inlets/gmy2inlets"
+INFLOWPROFILEBUILDERPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/inflow-profile-builder/inflow_named2.py"
 
 VX2GMY_CHUNKSIZE = 2000
 
@@ -151,10 +151,11 @@ with open("ioletpositions.txt", "r") as ioletpos:
     ioletPosPU += lines[1]
     # Get the iolet positions
     for line in lines[2:]:
-        ioletpos = [float(i) for i in line.split()]
-        iolet_list.append(np.array(ioletpos))
-        ioletpos = transform_to_physical(np.array(ioletpos),dx,shifts)
+        ioletposFull = [float(i) for i in line.split()]
+        iolet_list.append(np.array(ioletposFull[0:3]))
+        ioletpos = transform_to_physical(np.array(ioletposFull[0:3]),dx,shifts)
         ioletPosPU += str(ioletpos[0]) + " " + str(ioletpos[1]) + " " + str(ioletpos[2]) + "\n"
+        #ioletPosPU += str(ioletpos[0]) + " " + str(ioletpos[1]) + " " + str(ioletpos[2]) + " " + str(ioletposFull[3]*dx)+ "\n"
 
 with open("ioletpositions_PU.txt", "w") as outxml:
     outxml.write(ioletPosPU)
@@ -193,6 +194,8 @@ for ioindex, ioletpos in enumerate(iolet_list):
     else:
         inletposlist.append(ioletpos)
 
+#raise SystemExit(0)
+
 # Write the second version of the voxelizer's xml, in which the inlet and outlet positions are correctly identified and ordered
 write_voxelizer_xml(xmlfname, DXreq/STLUNITS, DXreq, STLFNAME, inletposlist, outletposlist)
 
@@ -217,10 +220,12 @@ execute("bash " + MAKEGMYMPIPATH + " fluidAndLinks.dat " + gmyfname  + " " + str
 
 
 ## Create the velocity weights file 
-#inletsfname = ROOTNAME + ".inlets"
-#execute(GMY2INLETSPATH + " " + gmyfname + " " + inletsfname + "\n")
-#execute("python3 " + INFLOWPROFILEBUILDERPATH + " " + inletsfname + "\n")
-#
-#for ilet in range(0,NUMINLETS): 
-#    execute("cp out" + str(ilet) + ".weights.txt INLET" + str(ilet) + "_VELOCITY.txt.weights.txt\n") 
+if not os.path.exists('InletImages'):
+    os.mkdir('InletImages')
+inletsfname = ROOTNAME + ".inlets"
+execute(GMY2INLETSPATH + " " + gmyfname + " " + inletsfname + "\n")
+execute("python3 " + INFLOWPROFILEBUILDERPATH + " " + inletsfname + " 0 \n")
+
+for ilet in range(0,NUMINLETS): 
+    execute("cp out" + str(ilet) + ".weights.txt MESH1_INLET" + str(ilet) + "_VELOCITY.txt.weights.txt\n") 
 
