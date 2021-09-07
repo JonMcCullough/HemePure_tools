@@ -8,7 +8,7 @@
 2) modify paths at top of hemeLBpreproc.py (VOXELIZERPATH and MAKEGMYMPIPATH) and vx2gmy/make_gmy_MPI.sh (VX2GMYPATH)
 3) run 'make' in voxelizer/source/, gmy2inlets/ and vx2gmy/. It appears voxelizer/source is sensitive to gcc version (has been successful with gcc/4.8 and gcc/5.5 but not gcc/7.4)
 4) navigate to folder with *.stl file and run script with following instruction:
-	python3 PATHTO/hemeLBPreProc.py STLFNAME STLUNITS(e.g 1e-3 for mm) INLETPOSITIONS(X1,Y1,Z1;X2,Y2,Z2;..., (in quotes)) NUMINLETS NUMOUTLETS DXreq NUMRANKS tauDesired
+	python3 PATHTO/hemeLBpreprocSingle.py STLFNAME STLUNITS(e.g 1e-3 for mm) INLETPOSITIONS(X1,Y1,Z1;X2,Y2,Z2;..., (in quotes)) NUMINLETS NUMOUTLETS DXreq NUMRANKS tauDesired
 
 	STLFNAME - name of *.stl file
 	STLUNITS - units of *.stl file (e.g 1e-3 for mm)
