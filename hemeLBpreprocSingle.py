@@ -3,8 +3,8 @@ import numpy as np
 
 VOXELIZERPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/voxelizer/source/voxelizer3_file_ARCHER"
 MAKEGMYMPIPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/vx2gmy/make_gmy_MPI.sh"
-GMY2INLETSPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/gmy2inlets/gmy2inlets"
-INFLOWPROFILEBUILDERPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/inflow-profile-builder/inflow_named2.py"
+GMY2LETSPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/gmy2inlets/gmy2lets"
+INFLOWPROFILEBUILDERPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/inflow-profile-builder/inflow_named3.py"
 
 VX2GMY_CHUNKSIZE = 2000
 
@@ -223,9 +223,19 @@ execute("bash " + MAKEGMYMPIPATH + " fluidAndLinks.dat " + gmyfname  + " " + str
 if not os.path.exists('InletImages'):
     os.mkdir('InletImages')
 inletsfname = ROOTNAME + ".inlets"
-execute(GMY2INLETSPATH + " " + gmyfname + " " + inletsfname + "\n")
-execute("python3 " + INFLOWPROFILEBUILDERPATH + " " + inletsfname + " 0 \n")
+execute(GMY2LETSPATH + " " + gmyfname + " " + inletsfname + " INLET \n")
+execute("python3 " + INFLOWPROFILEBUILDERPATH + " " + inletsfname + " 0 INLET \n")
 
 for ilet in range(0,NUMINLETS): 
-    execute("cp out" + str(ilet) + ".weights.txt MESH1_INLET" + str(ilet) + "_VELOCITY.txt.weights.txt\n") 
+    execute("cp out" + str(ilet) + ".weights.txt INLET" + str(ilet) + "_VELOCITY.txt.weights.txt\n") 
+
+## Create the windkessel weights file 
+if not os.path.exists('OutletImages'):
+    os.mkdir('OutletImages')
+outletsfname = ROOTNAME + ".outlets"
+execute(GMY2LETSPATH + " " + gmyfname + " " + outletsfname + " OUTLET \n")
+execute("python3 " + INFLOWPROFILEBUILDERPATH + " " + outletsfname + " 0 OUTLET \n")
+
+for ilet in range(0,NUMOUTLETS): 
+    execute("cp out" + str(ilet) + ".weights.txt OUTLET" + str(ilet) + "_WK.txt.weights.txt\n") 
 
