@@ -497,7 +497,7 @@ void memu()
 void writeXML(const pluint num_openings, double dx, double shift_x, double shift_y, double shift_z)
 {
 	std::ofstream myfile;
-	myfile.open ("iolets_block_inputxml.txt");
+	myfile.open ("iolets_block_inputxml_PP.txt");
 
 	myfile << "  <inlets>\n";
 
@@ -508,10 +508,69 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 			myfile <<
 				"    <inlet>\n"
 				"      <!-- index value=" << inletnumber-1 << "-->\n"
-				"      <condition type=\"velocity\" subtype=\"file\">\n"
-				"        <path value=\"MESHX_INLET" << inletnumber-1 << "_VELOCITY.txt\"/>\n"
+				"      <condition subtype=\"cosine\" type=\"pressure\">\n"
+				"        <amplitude units=\"mmHg\" value=\"0.0\"/>\n"
+				"        <mean units=\"mmHg\" value=\"0.0\"/>\n"
+				"        <phase units=\"rad\" value=\"0.0\"/>\n"
+				"        <period units=\"s\" value=\"1\"/>\n"
+				"      </condition>\n"
+				"      <normal units=\"dimensionless\" value=\"(" <<
+				openings[i].normal[0] << "," << openings[i].normal[1] << "," << openings[i].normal[2] << ")\"/>\n"
+				// Lattice Units
+				"      <position units=\"lattice\" value=\"(" <<
+				openings[i].center[0] << "," << openings[i].center[1] << "," << openings[i].center[2] << ")\"/>\n"
+				"    </inlet>\n";
+				//// Physical Units
+				// "      <position units=\"m\" value=\"(" <<
+				// (openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
+				// "    </inlet>\n";
+		}
+	}
+	myfile << "  </inlets>\n";
+	myfile << "  <outlets>\n";
+	inletnumber = 0;
+	for (pluint i = 0; i < num_openings; ++i) {
+		if (openings[i].type == 3) { // outlets
+			inletnumber++;
+			myfile <<
+				"    <outlet>\n"
+				"      <!-- index value=" << inletnumber-1 << " -->\n"
+				"      <condition subtype=\"cosine\" type=\"pressure\">\n"
+				"        <amplitude units=\"mmHg\" value=\"0.0\"/>\n"
+				"        <mean units=\"mmHg\" value=\"0.0\"/>\n"
+				"        <phase units=\"rad\" value=\"0.0\"/>\n"
+				"        <period units=\"s\" value=\"1\"/>\n"
+				"      </condition>\n"
+				"      <normal units=\"dimensionless\" value=\"(" <<
+				openings[i].normal[0] << "," << openings[i].normal[1] << "," << openings[i].normal[2] << ")\"/>\n"
+				// Lattice Units
+				"      <position units=\"lattice\" value=\"(" <<
+				openings[i].center[0] << "," << openings[i].center[1] << "," << openings[i].center[2] << ")\"/>\n"
+				"    </outlet>\n";
+				//// Physical Units
+				// "      <position units=\"m\" value=\"(" <<
+				// (openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
+				// "    </outlet>\n";
+		}
+	}
+	myfile << "  </outlets>\n";
+
+	myfile.close();
+
+	
+	myfile.open ("iolets_block_inputxml_VP.txt");
+
+	myfile << "  <inlets>\n";
+
+	inletnumber = 0;
+	for (pluint i = 0; i < num_openings; ++i) {
+		if (openings[i].type == 2) { // inlets
+			inletnumber++;
+			myfile <<
+				"    <inlet>\n"
+				"      <!-- index value=" << inletnumber-1 << "-->\n"
+				"      <condition type=\"velocity\" subtype=\"parabolic\">\n"
 				"        <radius value=\"" << 0.5*(openings[i].innerRadius + openings[i].outerRadius)*dx << "\" units=\"m\"/>\n"
-				"        <area value=\"" << openings[i].area*dx*dx << "\" units=\"m^2\"/>\n"
 				"        <maximum value=\"CHANGE\" units=\"m/s\"/>\n"
 				"      </condition>\n"
 				"      <normal units=\"dimensionless\" value=\"(" <<
@@ -540,6 +599,128 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 				"        <mean units=\"mmHg\" value=\"0.0\"/>\n"
 				"        <phase units=\"rad\" value=\"0.0\"/>\n"
 				"        <period units=\"s\" value=\"1\"/>\n"
+				"      </condition>\n"
+				"      <normal units=\"dimensionless\" value=\"(" <<
+				openings[i].normal[0] << "," << openings[i].normal[1] << "," << openings[i].normal[2] << ")\"/>\n"
+				// Lattice Units
+				"      <position units=\"lattice\" value=\"(" <<
+				openings[i].center[0] << "," << openings[i].center[1] << "," << openings[i].center[2] << ")\"/>\n"
+				"    </outlet>\n";
+				//// Physical Units
+				// "      <position units=\"m\" value=\"(" <<
+				// (openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
+				// "    </outlet>\n";
+		}
+	}
+	myfile << "  </outlets>\n";
+
+	myfile.close();
+	
+
+	myfile.open ("iolets_block_inputxml_VfP.txt");
+
+	myfile << "  <inlets>\n";
+
+	inletnumber = 0;
+	for (pluint i = 0; i < num_openings; ++i) {
+		if (openings[i].type == 2) { // inlets
+			inletnumber++;
+			myfile <<
+				"    <inlet>\n"
+				"      <!-- index value=" << inletnumber-1 << "-->\n"
+				"      <condition type=\"velocity\" subtype=\"file\">\n"
+				"        <path value=\"MESHX_INLET" << inletnumber-1 << "_VELOCITY.txt\"/>\n"
+				"        <radius value=\"" << 0.5*(openings[i].innerRadius + openings[i].outerRadius)*dx << "\" units=\"m\"/>\n"
+				"        <area value=\"" << openings[i].area*dx*dx << "\" units=\"m^2\"/>\n"
+				"       <!-- <maximum value=\"CHANGE (Coupled only)\" units=\"m/s\"/> -->\n"	
+				"      </condition>\n"
+				"      <normal units=\"dimensionless\" value=\"(" <<
+				openings[i].normal[0] << "," << openings[i].normal[1] << "," << openings[i].normal[2] << ")\"/>\n"
+				// Lattice Units
+				"      <position units=\"lattice\" value=\"(" <<
+				openings[i].center[0] << "," << openings[i].center[1] << "," << openings[i].center[2] << ")\"/>\n"
+				"    </inlet>\n";
+				//// Physical Units
+				// "      <position units=\"m\" value=\"(" <<
+				// (openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
+				// "    </inlet>\n";
+		}
+	}
+	myfile << "  </inlets>\n";
+	myfile << "  <outlets>\n";
+	inletnumber = 0;
+	for (pluint i = 0; i < num_openings; ++i) {
+		if (openings[i].type == 3) { // outlets
+			inletnumber++;
+			myfile <<
+				"    <outlet>\n"
+				"      <!-- index value=" << inletnumber-1 << " -->\n"
+				"      <condition subtype=\"cosine\" type=\"pressure\">\n"
+				"        <amplitude units=\"mmHg\" value=\"0.0\"/>\n"
+				"        <mean units=\"mmHg\" value=\"0.0\"/>\n"
+				"        <phase units=\"rad\" value=\"0.0\"/>\n"
+				"        <period units=\"s\" value=\"1\"/>\n"
+				"      </condition>\n"
+				"      <normal units=\"dimensionless\" value=\"(" <<
+				openings[i].normal[0] << "," << openings[i].normal[1] << "," << openings[i].normal[2] << ")\"/>\n"
+				// Lattice Units
+				"      <position units=\"lattice\" value=\"(" <<
+				openings[i].center[0] << "," << openings[i].center[1] << "," << openings[i].center[2] << ")\"/>\n"
+				"    </outlet>\n";
+				//// Physical Units
+				// "      <position units=\"m\" value=\"(" <<
+				// (openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
+				// "    </outlet>\n";
+		}
+	}
+	myfile << "  </outlets>\n";
+
+	myfile.close();
+
+	
+	myfile.open ("iolets_block_inputxml_VfWKf.txt");
+
+	myfile << "  <inlets>\n";
+
+	inletnumber = 0;
+	for (pluint i = 0; i < num_openings; ++i) {
+		if (openings[i].type == 2) { // inlets
+			inletnumber++;
+			myfile <<
+				"    <inlet>\n"
+				"      <!-- index value=" << inletnumber-1 << "-->\n"
+				"      <condition type=\"velocity\" subtype=\"file\">\n"
+				"        <path value=\"MESHX_INLET" << inletnumber-1 << "_VELOCITY.txt\"/>\n"	
+				"        <radius value=\"" << 0.5*(openings[i].innerRadius + openings[i].outerRadius)*dx << "\" units=\"m\"/>\n"
+				"        <area value=\"" << openings[i].area*dx*dx << "\" units=\"m^2\"/>\n"
+				"       <!-- <maximum value=\"CHANGE (Coupled only)\" units=\"m/s\"/> -->\n"
+				"      </condition>\n"
+				"      <normal units=\"dimensionless\" value=\"(" <<
+				openings[i].normal[0] << "," << openings[i].normal[1] << "," << openings[i].normal[2] << ")\"/>\n"
+				// Lattice Units
+				"      <position units=\"lattice\" value=\"(" <<
+				openings[i].center[0] << "," << openings[i].center[1] << "," << openings[i].center[2] << ")\"/>\n"
+				"    </inlet>\n";
+				//// Physical Units
+				// "      <position units=\"m\" value=\"(" <<
+				// (openings[i].center[0] - shift_x)*dx << "," << (openings[i].center[1] - shift_y)*dx << "," << (openings[i].center[2] - shift_z)*dx << ")\"/>\n"
+				// "    </inlet>\n";
+		}
+	}
+	myfile << "  </inlets>\n";
+	myfile << "  <outlets>\n";
+	inletnumber = 0;
+	for (pluint i = 0; i < num_openings; ++i) {
+		if (openings[i].type == 3) { // outlets
+			inletnumber++;
+			myfile <<
+				"    <outlet>\n"
+				"      <!-- index value=" << inletnumber-1 << " -->\n"
+				"      <condition subtype=\"fileGKmodel\" type=\"windkessel\">\n"
+				"        <path value=\"OUTLET" << inletnumber-1 << "_WK.txt.weights.txt\"/>\n"
+				"        <R value=\"CHANGE\" units=\"kg/m^4*s\"/>\n"
+				"        <radius value=\"" << 0.5*(openings[i].innerRadius + openings[i].outerRadius)*dx << "\" units=\"m\"/>\n"
+				"        <area value=\"" << openings[i].area*dx*dx << "\" units=\"m^2\"/>\n"
 				"      </condition>\n"
 				"      <normal units=\"dimensionless\" value=\"(" <<
 				openings[i].normal[0] << "," << openings[i].normal[1] << "," << openings[i].normal[2] << ")\"/>\n"

@@ -1,7 +1,7 @@
 import os, sys
 import numpy as np
 
-VOXELIZERPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/voxelizer/source/voxelizer3_file_ARCHER"
+VOXELIZERPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/voxelizer/source/voxelizer_MultiInput"
 MAKEGMYMPIPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/vx2gmy/make_gmy_MPI.sh"
 GMY2LETSPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/gmy2inlets/gmy2lets"
 INFLOWPROFILEBUILDERPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/inflow-profile-builder/inflow_named3.py"
@@ -204,16 +204,19 @@ execute("mpirun -np " + str(NUMRANKS) + " " + VOXELIZERPATH + " " + xmlfname + "
 execute("cat fluidAndLinks_*.dat > fluidAndLinks.dat && rm fluidAndLinks_*.plb && rm fluidAndLinks_*.dat")
 
 
-# Get the inlets and outlets xml blocks (for the hemelb input xml) output by the voxelizer
-with open("iolets_block_inputxml.txt", "r") as ioletsblockfile:
-    ioletsblocktxt = ioletsblockfile.read()
-
-# Write the hemelb input.xml file
-hemexmlfname = "input.xml"
+# Write the hemelb input.xml files - with different BCs
 gmyfname = ROOTNAME + ".gmy"
 gmy_resolution = dx #* STLUNITS
 
-write_heme_xml(tauDes, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt, dx*shifts) #JM had - shiftMaster here
+BCExtensions=["PP","VP","VfP","VfWKf"]
+
+for t in range(len(BCExtensions)):
+    hemexmlfname = "input_"+BCExtensions[t]+".xml"
+
+    # Get the inlets and outlets xml blocks (for the hemelb input xml) output by the voxelizer
+    with open("iolets_block_inputxml_"+BCExtensions[t]+".txt", "r") as ioletsblockfile:
+        ioletsblocktxt = ioletsblockfile.read()
+    write_heme_xml(tauDes, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt, dx*shifts) #JM had - shiftMaster here
 
 # Convert the voxelizer output into a hemelb gmy file
 execute("bash " + MAKEGMYMPIPATH + " fluidAndLinks.dat " + gmyfname  + " " + str(NUMRANKS) + " " + str(VX2GMY_CHUNKSIZE) + "\n")

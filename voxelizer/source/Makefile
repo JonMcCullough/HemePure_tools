@@ -17,7 +17,7 @@
 # Leading directory of the Palabos source code
 palabosRoot  = ../palabos
 # Name of source files in current directory to compile and link with Palabos
-projectFiles = voxelizer2.cpp
+projectFiles = voxelizer_MultiInput.cpp
 
 # Set optimization flags on/off
 optimize    = true
@@ -46,7 +46,7 @@ serialCXX    = g++
 # Compiler to use with MPI parallelism
 parallelCXX  = mpiCC
 # General compiler flags (e.g. -Wall to turn on all warnings on g++)
-compileFlags = -Wall -Wno-unused-variable -Wnon-virtual-dtor -Wno-deprecated -std=c++11 -no-pie
+compileFlags = -Wall -Wno-unused-variable -Wnon-virtual-dtor -Wno-deprecated -std=c++11 #-no-pie
 # General linker flags (don't put library includes into this flag)
 linkFlags    =
 # Compiler flags to use when optimization mode is on
