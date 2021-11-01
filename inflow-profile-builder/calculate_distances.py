@@ -6,8 +6,8 @@ def calculate_distances_from_borders(tdf, border_points):
   """
   taken a mesh and a set of border points, calculate the distance to the nearest border point.
   """
-  tdfa = tdf.as_matrix()
-  tdfb = border_points.as_matrix()
+  tdfa = tdf.to_numpy()
+  tdfb = border_points.to_numpy()
 
   distances = np.zeros((len(tdfa),1))
   distances.fill(1000000.0)
@@ -36,10 +36,10 @@ def calculate_distances_from_borders_per_inlet(tdf, border_points, numInlets):
   for iNum in range(0,numInlets):
       print(iNum)
       tdfa = tdf[tdf["iolet_number"]==iNum]
-      tdfa = tdfa.as_matrix()
+      tdfa = tdfa.to_numpy()
      
       tdfb = border_points[border_points["iolet_number"]==iNum]
-      tdfb = tdfb.as_matrix()
+      tdfb = tdfb.to_numpy()
 
       for i in range(0, len(tdfa)): #JM was xrange
         for j in range(0, len(tdfb)): #JM was xrange
@@ -51,8 +51,12 @@ def calculate_distances_from_borders_per_inlet(tdf, border_points, numInlets):
             if dist == 0.0:
               break
         iCount = iCount + 1
-       
-      distances[iLast:iCount,1] = max(distances[iLast:iCount,0])
+      
+      if iLast<iCount:
+          distances[iLast:iCount,1] = max(distances[iLast:iCount,0])
+      else:
+          print("Size Error on outlet ",iNum)
+
       iLast = iCount
 
   return distances

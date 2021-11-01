@@ -7,7 +7,7 @@ from scipy.optimize import leastsq
 
 
 def numpyify(points):
-  return points.as_matrix()
+  return points.to_numpy()
 
 def f_min(X,p):
     plane_xyz = p[0:3]

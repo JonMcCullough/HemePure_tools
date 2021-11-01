@@ -16,7 +16,7 @@ def create_mesh_links(tdf,dist_limit=1.0):
   interval = int(np.sqrt(num_sites))
 
   #convert to matrix for better performance
-  xs = pd.DataFrame(tdf, columns=['px', 'py', 'pz']).as_matrix()
+  xs = pd.DataFrame(tdf, columns=['px', 'py', 'pz']).to_numpy()
 
   for i in range(0,num_sites): #JM was xrange
     links_i = []

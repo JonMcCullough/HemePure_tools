@@ -22,7 +22,8 @@ def distance_to_velocity_weights_per_inlet(dist):
   for i in range(0, len(dist[:,0])): #JM was xrange
     #rel_dist = dist[i] / max_dist
     if dist[i,1] == 0:
-        rel_dist = 0.01 #Test small value to ensure non-zero weight
+        #rel_dist = 0.01 #Test small value to ensure non-zero weight
+        rel_dist = 0.0 #Test small value to ensure non-zero weight
     else:    
         rel_dist = dist[i,0] / dist[i,1]
     # quadratic function, ax^2+bx+c=0, a=-1, b=2, c=0

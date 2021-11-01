@@ -15,7 +15,7 @@ def detect_border_points_in_plane(tdf, links, threshold=10):
   # list of IDs of border points found.
   border_ids = []
 
-  xs = pd.DataFrame(tdf, columns=['px', 'py', 'pz']).as_matrix()
+  xs = pd.DataFrame(tdf, columns=['px', 'py', 'pz']).to_numpy()
 
   # initial border selection
   border_points = np.zeros((0,3))

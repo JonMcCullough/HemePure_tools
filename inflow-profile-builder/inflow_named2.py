@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.use("Agg")
+
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -42,9 +45,32 @@ if __name__ == "__main__":
   adf = adf.assign(nodeWeights=pd.Series(weights)) 
  
   for let in range(0,test_data['iolet_number'].max()+1):
+      temp = bdf[bdf['iolet_number'] == let]
+      localPoints = temp[['x','y','z']].values
+      #print(len(localPoints))
+      #print(localPoints.shape)
+      # subtract out the centroid
+      #localPoints = np.transpose(localPoints) - np.sum(localPoints,1) / len(localPoints) 
+      localPoints = localPoints - localPoints.mean(axis=0) 
+      #print(localPoints.shape)
+      #print(localPoints) 
+      # singular value decomposition
+      u,sig,v = np.linalg.svd(localPoints)
+      normal = v[2]
+      print(v[2])    
+      azim = np.arccos(np.dot(np.array([normal[0],normal[1],0]),np.array([1,0,0])) / (np.linalg.norm(np.array([normal[0],normal[1],0])) * np.linalg.norm(np.array([1,0,0]))))
+      elev = np.pi/2 - np.arccos(np.dot(normal,np.array([0,0,1])) / (np.linalg.norm(normal) * np.linalg.norm(np.array([0,0,1]))))
+      
+      if np.isnan(azim):
+          azim = 0
+
+      print(np.degrees(azim), np.degrees(elev))
+
       fig = plt.figure()
       ax = fig.add_subplot(121, projection='3d')
       ax.scatter(bdf[bdf['iolet_number'] == let]["x"], bdf[bdf['iolet_number'] == let]["y"], bdf[bdf['iolet_number'] == let]["z"])
+      ax.azim = np.degrees(azim)
+      ax.elev = np.degrees(elev)
 
       ax = fig.add_subplot(122, projection='3d')
       ax.scatter(adf[adf['iolet_number'] == let]["x"], adf[adf['iolet_number'] == let]["y"], adf[adf['iolet_number'] == let]["nodeWeights"])
