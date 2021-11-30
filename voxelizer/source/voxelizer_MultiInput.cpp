@@ -719,6 +719,7 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 				"      <condition subtype=\"fileGKmodel\" type=\"windkessel\">\n"
 				"        <path value=\"OUTLET" << inletnumber-1 << "_WK.txt.weights.txt\"/>\n"
 				"        <R value=\"CHANGE\" units=\"kg/m^4*s\"/>\n"
+				"        <C value=\"CHANGE\" units=\"m^4*s^2/kg\"/>\n"
 				"        <radius value=\"" << 0.5*(openings[i].innerRadius + openings[i].outerRadius)*dx << "\" units=\"m\"/>\n"
 				"        <area value=\"" << openings[i].area*dx*dx << "\" units=\"m^2\"/>\n"
 				"      </condition>\n"
