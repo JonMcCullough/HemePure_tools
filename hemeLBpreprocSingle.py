@@ -50,7 +50,7 @@ def write_heme_xml(tauValue, hemexmlfname, gmyfname, gmy_resolution, ioletsblock
     xml =  "<?xml version=\"1.0\"?>\n"
     xml += "<hemelbsettings version=\"3\">\n"
     xml += "  <simulation>\n"
-    xml += "    <step_length units=\"s\" value= " + str((tauValue - 0.5)*gmy_resolution*gmy_resolution/(12e-6)) + "/>\n"
+    xml += "    <step_length units=\"s\" value=\"" + str((tauValue - 0.5)*gmy_resolution*gmy_resolution/(12e-6)) + "\"/>\n"
     xml += "    <steps units=\"lattice\" value=\"CHANGE\"/>\n"
     xml += "    <stresstype value=\"1\"/>\n"
     xml += "    <voxel_size units=\"m\" value=\"" + str(gmy_resolution) + "\"/>\n"
