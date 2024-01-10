@@ -104,7 +104,7 @@ with open(sys.argv[3]) as inletList:
     INLETS = [np.float_(iolet.split(",")) for iolet in inletList.readline().split(";")]
 NUMINLETS = int(sys.argv[4])
 NUMOUTLETS = int(sys.argv[5])
-DXreq = np.float(sys.argv[6])
+DXreq = float(sys.argv[6])
 
 ROOTNAME = os.path.splitext(os.path.basename(STLFNAME))[0]
 
@@ -230,7 +230,7 @@ execute(GMY2LETSPATH + " " + gmyfname + " " + inletsfname + " INLET \n")
 execute("python3 " + INFLOWPROFILEBUILDERPATH + " " + inletsfname + " 0 INLET \n")
 
 for ilet in range(0,NUMINLETS): 
-    execute("cp out" + str(ilet) + ".weights.txt INLET" + str(ilet) + "_VELOCITY.txt.weights.txt\n") 
+    execute("cp out" + str(ilet) + ".txt.weights.txt INLET" + str(ilet) + "_VELOCITY.txt.weights.txt\n") 
 
 ## Create the windkessel weights file 
 if not os.path.exists('OutletImages'):
@@ -240,5 +240,5 @@ execute(GMY2LETSPATH + " " + gmyfname + " " + outletsfname + " OUTLET \n")
 execute("python3 " + INFLOWPROFILEBUILDERPATH + " " + outletsfname + " 0 OUTLET \n")
 
 for ilet in range(0,NUMOUTLETS): 
-    execute("cp out" + str(ilet) + ".weights.txt OUTLET" + str(ilet) + "_WK.txt.weights.txt\n") 
+    execute("cp out" + str(ilet) + ".txt.weights.txt OUTLET" + str(ilet) + "_WK.txt.weights.txt\n") 
 
