@@ -489,8 +489,9 @@ void write_chunk_to_file(VX *vx, uint64_t offset, uint64_t num_blocks_in_chunk, 
 		blocks[blockIndex - offset].sites->push_back(vx->data[i]);
 	}
 
+	
 	for(uint64_t i = 0; i < num_blocks_in_chunk; i++) {
-				printf("block %u: blockSiteCount %u\n", i+offset, blocks[i].sites->size());
+	     // if( blocks[i].sites->size() > 0 ) printf("block %u: blockSiteCount %u\n", i+offset, blocks[i].sites->size());
 
 		// check for problems (e.g. exceeding max number of sites per block)
 		if(blocks[i].sites->size() > maxSitesPerBlock) {
@@ -499,14 +500,14 @@ void write_chunk_to_file(VX *vx, uint64_t offset, uint64_t num_blocks_in_chunk, 
 			exit(1);
 		}
 	}
-
+	
 	// declarations for zlib compression
 	z_stream strm;
 
 	uint64_t max_buffer_size = maxSitesPerBlock * (2 + 26 * 4 * sizeof(uint64_t));
 	unsigned char *compressedBuffer = new unsigned char [max_buffer_size];
 	unsigned char *decompressedBuffer = new unsigned char [max_buffer_size];
-
+	
 	// write block data
 	VX_ENTRY * blockData[blockEdgeLen][blockEdgeLen][blockEdgeLen];
 	for (uint64_t i = 0; i < num_blocks_in_chunk; i++) {

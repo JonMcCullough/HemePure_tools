@@ -11,8 +11,13 @@
 
 #include "utils.h"
 
-// ========== DO NOT TOUCH (START) ========== //
+// This is for timing functions -- will check to see if Palabos has them
+#include <mpi.h>
 
+// ========== DO NOT TOUCH (START) ========== //
+//  BJ: One can actually touch it but not recommended -- this code is needed for the parallel IO 
+//  the key functionality here is the send, which trawls all the internal blocks of the 
+// multi-block structure and collects the data fields for transfer
 namespace plb {
 	template<typename T, int nDim>
 		class SparseTensorFieldDataTransfer3D : public BlockDataTransfer3D {
@@ -150,7 +155,8 @@ using namespace plb;
 
 #define DESCRIPTOR descriptors::D3Q19Descriptor
 
-const plint blockSize = 0;				// Zero means: no sparse representation.
+
+const plint blockSize = 14; 			// Zero means: no sparse representation.
 const plint extendedEnvelopeWidth = 2;	// Because the Guo off lattice boundary condition needs 2-cell neighbor access.
 const plint borderWidth = 1;			// Because the Guo boundary condition acts in a one-cell layer.
 										//		Requirement: margin >= borderWidth.
@@ -164,28 +170,6 @@ bool linkFileUseOuterBorder = false;
 // typedefs
 typedef double T;
 typedef TriangleSet<T>::Triangle Triangle;
-
-// defining a hash map to store triangles near site
-// ------------------------------------------------
-struct funcHash {
-	size_t operator()(const Dot3D &k) const{
-		size_t h1 = std::hash<T>()(k.x);
-		size_t h2 = std::hash<T>()(k.y);
-		size_t h3 = std::hash<T>()(k.z);
-		return (h1^(h2 << 1))^(h3 << 2);
-	}
-};
-
-struct funcEqul {
-	bool operator()(const Dot3D& lhs, const Dot3D& rhs) const{
-		return (lhs.x == rhs.x) && (lhs.y == rhs.y) && (lhs.z == rhs.z);
-	}
-};
-
-//typedef std::unordered_map<Dot3D, std::vector<plint>, funcHash, funcEqul> Dot3DMap;
-//Dot3DMap triangles;
-std::vector<plint> triangles;
-// ---
 
 // structure which defines an opening
 // ----------------------------------
@@ -216,6 +200,7 @@ std::vector<Array<T,3> > analysisPoints;
 // -----------------------------
 TriangleSet<T>* arteryTriangleSet = 0;
 TriangularSurfaceMesh<T>* arterySurfaceMesh = 0;
+
 std::string arteryMeshFileName;
 std::unordered_map<plint,int> lidTriangles;
 // ---
@@ -247,11 +232,23 @@ void readGeneralParameters(XMLreader const& generalXML)
 	arteryTriangleSet = new TriangleSet<T>(arteryMeshFileName, DBL);
 }
 
+/* BJ:  I refactored this to be a general BoxProcessingFunctional 
+  so that I can pass it an extra argument besides the links and the flags.
+  I also want to pass in a pre-created triangle hash. The only complication is
+  that instead of a process() function we now neeed to use processGenericBlocks()
+  instead. This takes a vector of multi-block structures as its argument. In our 
+  case all 3 multi-block arguments should have an identical multi-block structure
+  -- that of the voxel matrix 
+  */
+
+
 template<typename T1, typename T2>
-class VoxelToLink3D : public BoxProcessingFunctional3D_ST<T1, T2, 159> {
-	public:
+class VoxelToLink3D : public BoxProcessingFunctional3D {
+public:
 		VoxelToLink3D(Box3D bbox);
-		virtual void process(Box3D domain, ScalarField3D<T1>& flags, TensorField3D<T2,159>& links);
+
+		virtual void processGenericBlocks( Box3D domain, std::vector<AtomicBlock3D*> fields);
+
 		virtual VoxelToLink3D<T1,T2>* clone() const {
 			return new VoxelToLink3D(*this);
 		}
@@ -259,13 +256,6 @@ class VoxelToLink3D : public BoxProcessingFunctional3D_ST<T1, T2, 159> {
 			modified[0] = modif::nothing;
 			modified[1] = modif::staticVariables;
 		}
-	private:
-		T2 globalid(Dot3D const& absPos, plint iX, plint iY, plint iZ) const;
-		void getTriangles(
-				Array<T2,2> const& xRange,
-				Array<T2,2> const& yRange,
-				Array<T2,2> const& zRange,
-				std::vector<plint>& foundTriangles) const;
 	private:
 		plint nX, nY, nZ;
 };
@@ -280,50 +270,21 @@ VoxelToLink3D<T1,T2>::VoxelToLink3D(Box3D bbox):
 	nZ(bbox.z1+1)
 { }
 
+// This is the main processor
 template<typename T1, typename T2>
-T2 VoxelToLink3D<T1,T2>::globalid(
-		Dot3D const& absPos, plint iX, plint iY, plint iZ) const {
-	return iZ+absPos.z+nZ*(iY+absPos.y+nY*(iX+absPos.x));
-}
-
-//template<typename T1, typename T2>
-//void VoxelToLink3D<T1,T2>::getTriangles(
-//		Array<T2,2> const& xRange,
-//		Array<T2,2> const& yRange,
-//		Array<T2,2> const& zRange,
-//		std::vector<plint>& foundTriangles) const
-//{
-//	// fit onto the grid by making it bigger
-//	// to be sure the triangle is never missed through round-off errors
-//	Box3D discreteRange(
-//			(plint)xRange[0], (plint)xRange[1]+1,
-//			(plint)yRange[0], (plint)yRange[1]+1,
-//			(plint)zRange[0], (plint)zRange[1]+1);
-//
-//	foundTriangles.clear();
-//	for (plint iX = discreteRange.x0; iX <= discreteRange.x1; ++iX)
-//		for (plint iY = discreteRange.y0; iY <= discreteRange.y1; ++iY)
-//			for (plint iZ = discreteRange.z0; iZ <= discreteRange.z1; ++iZ) {
-//				if (triangles.find(Dot3D(iX,iY,iZ)) != triangles.end()) {
-//					std::vector<plint> const& newTriangles = triangles.at(Dot3D(iX,iY,iZ));
-//					foundTriangles.insert(foundTriangles.end(),
-//							newTriangles.begin(), newTriangles.end());
-//				}
-//			}
-//
-//	std::sort(foundTriangles.begin(), foundTriangles.end());
-//	foundTriangles.erase(unique(foundTriangles.begin(), foundTriangles.end()), foundTriangles.end());
-//}
-
-template<typename T1, typename T2>
-void VoxelToLink3D<T1,T2>::process(
-		Box3D domain, ScalarField3D<T1>& flags, TensorField3D<T2,159>& links)
+void VoxelToLink3D<T1,T2>::processGenericBlocks (Box3D domain, std::vector<AtomicBlock3D*> fields)
+//		Box3D domain, ScalarField3D<T1>& flags, TensorField3D<T2,159>& links)
 {
+	// Unwrap the fields, dereference the pointers and dynamic cast. 
+	ScalarField3D<T1>& flags = dynamic_cast<ScalarField3D<T1>&>(*fields[0]);
+	TensorField3D<T2,159>& links = dynamic_cast<TensorField3D<T2,159>&>(*fields[1]);
+
+	// This is a hash container of nearby triangles computed the same way as for voxelization
+ 	AtomicContainerBlock3D& triHashContainer = dynamic_cast<AtomicContainerBlock3D&>(*fields[2]);
+
 	Dot3D absPos = flags.getLocation();
 	Dot3D ofs = computeRelativeDisplacement(flags, links);
-	//pcout << "--> processing links and finding intersections with triangles on " << getpid() << std::endl;
-
-	// variable declarations
+	
 	Array<T ,3> displacement;
 	Array<T2,2> xRange, yRange, zRange;
 	Array<T2,3> point1, point2;
@@ -337,7 +298,6 @@ void VoxelToLink3D<T1,T2>::process(
 	normal[2] = -2.0;
 
 	pluint iWrite, opening, result, whichT;
-  //std::vector<T2> possibleTriangles;
 
 	//// check conversion of double to plint...
 	//distce = -atan(1.0)*4.0;
@@ -351,8 +311,8 @@ void VoxelToLink3D<T1,T2>::process(
 	distce = std::numeric_limits<T>::max();
 
 	// loop through all sites (inside and outside)
-	for (plint iX = domain.x0; iX <= domain.x1; ++iX)
-		for (plint iY = domain.y0; iY <= domain.y1; ++iY)
+	for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+		for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
 			for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
 				Array<T2,159>& linkdata = links.get(iX+ofs.x, iY+ofs.y, iZ+ofs.z);
 
@@ -381,6 +341,9 @@ void VoxelToLink3D<T1,T2>::process(
 										displacement[1] = dy;
 										displacement[2] = dz;
 
+										// Now we will only get the triangles 
+										// that are near us. We use the triangleHasn here
+										// 
 										Array<T2,2> xRange(
 												std::min(point1[0], point2[0]),
 												std::max(point1[0], point2[0]));
@@ -391,11 +354,13 @@ void VoxelToLink3D<T1,T2>::process(
 												std::min(point1[2], point2[2]),
 												std::max(point1[2], point2[2]));
 
-										//getTriangles(xRange, yRange, zRange, possibleTriangles);
+										TriangleHash<T> triangleHash(triHashContainer);
+    									std::vector<plint> possibleTriangles;
+    									triangleHash.getTriangles(xRange, yRange, zRange, possibleTriangles);
 
 										std::vector<T> crossings;
-										for (pluint iPossible = 0; iPossible < triangles.size()/*possibleTriangles.size()*/; ++iPossible) {
-											plint iTriangle = triangles/*possibleTriangles*/[iPossible];
+										for (pluint iPossible = 0; iPossible < possibleTriangles.size(); ++iPossible) {
+											plint iTriangle = possibleTriangles[iPossible];
 											if (arterySurfaceMesh->pointOnTriangle(
 														point1, point2, 0, iTriangle,
 														tmpIntrsc, tmpNormal, tmpDistce) == 1) {
@@ -435,13 +400,18 @@ void VoxelToLink3D<T1,T2>::process(
 											//lidTriangles.at(whichTriangle) << std::endl;
 											linkdata[++iWrite] = openings[
 												lidTriangles.at(whichT)].type;
+								
 											opening = openings[
 												lidTriangles.at(whichT)].index;
+
+											
 											if (opening < numIlets) {
+										
 												linkdata[++iWrite] = opening;
 												if (opening < 0) throw std::runtime_error("--> invalid opening index (1)!");
 											} else {
 												opening -= numIlets;
+												
 												linkdata[++iWrite] = opening;
 												if (opening < 0) throw std::runtime_error("--> invalid opening index (2)!");
 											}
@@ -464,6 +434,8 @@ void VoxelToLink3D<T1,T2>::process(
 							}
 				} else linkdata[0] = -1;
 			}
+		}
+	}
 }
 
 void memu()
@@ -758,7 +730,6 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 	myfile.close();
 	myfile.open("outlets_radius.txt");
 
-	//myfile << "outlets\n";
 	inletnumber = 0;
 	for (pluint i = 0; i < num_openings; ++i) {
 		if (openings[i].type == 3) { // outlets
@@ -771,95 +742,10 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 	pcout << "-> writing Radii file\n";
 }
 
-// assigns all triangles beforehand, but with heavy memory usage
-//void assignTriangles(
-//		TriangularSurfaceMesh<T> const& mesh,
-//		//std::vector<Dot3D>& assignedPositions,
-//		Dot3DMap& triangles)
-//{
-//	//assignedPositions.clear();
-//	for (plint iTriangle = 0; iTriangle < mesh.getNumTriangles(); ++iTriangle)
-//	{
-//		Array<T,3> const& vertex0 = mesh.getVertex(iTriangle,0);
-//		Array<T,3> const& vertex1 = mesh.getVertex(iTriangle,1);
-//		Array<T,3> const& vertex2 = mesh.getVertex(iTriangle,2);
-//
-//		Array<T,2> xRange(
-//				std::min(vertex0[0], std::min(vertex1[0], vertex2[0])),
-//				std::max(vertex0[0], std::max(vertex1[0], vertex2[0])));
-//		Array<T,2> yRange(
-//				std::min(vertex0[1], std::min(vertex1[1], vertex2[1])),
-//				std::max(vertex0[1], std::max(vertex1[1], vertex2[1])));
-//		Array<T,2> zRange(
-//				std::min(vertex0[2], std::min(vertex1[2], vertex2[2])),
-//				std::max(vertex0[2], std::max(vertex1[2], vertex2[2])));
-//
-//		// fit onto the grid by making it bigger
-//		// to be sure the triangle is never missed through round-off errors
-//		Box3D discreteRange(
-//				(plint)xRange[0], (plint)xRange[1]+1,
-//				(plint)yRange[0], (plint)yRange[1]+1,
-//				(plint)zRange[0], (plint)zRange[1]+1);
-//
-//		for (plint iX = discreteRange.x0; iX <= discreteRange.x1; ++iX)
-//			for (plint iY = discreteRange.y0; iY <= discreteRange.y1; ++iY)
-//				for (plint iZ = discreteRange.z0; iZ <= discreteRange.z1; ++iZ) {
-//					//if (triangles.find(Dot3D(iX,iY,iZ)) == triangles.end()) {
-//					//	assignedPositions.push_back(Dot3D(iX,iY,iZ));
-//					//}
-//					triangles[Dot3D(iX,iY,iZ)].push_back(iTriangle);
-//				}
-//	}
-//}
-
-//void assignTriangles(
-//		TriangularSurfaceMesh<T> const& mesh,
-//		Box3D const& subdomain,
-//		Dot3DMap& triangles)
-void assignTriangles(
-		Box3D subdomain)
-{
-	triangles.clear(); pluint hit = 0;
-	for (plint iTriangle = 0; iTriangle < arterySurfaceMesh->getNumTriangles(); ++iTriangle)
-	{
-		Array<T,3> const& vertex0 = arterySurfaceMesh->getVertex(iTriangle,0);
-		Array<T,3> const& vertex1 = arterySurfaceMesh->getVertex(iTriangle,1);
-		Array<T,3> const& vertex2 = arterySurfaceMesh->getVertex(iTriangle,2);
-
-		Array<T,2> xRange(
-				std::min(vertex0[0], std::min(vertex1[0], vertex2[0])),
-				std::max(vertex0[0], std::max(vertex1[0], vertex2[0])));
-		Array<T,2> yRange(
-				std::min(vertex0[1], std::min(vertex1[1], vertex2[1])),
-				std::max(vertex0[1], std::max(vertex1[1], vertex2[1])));
-		Array<T,2> zRange(
-				std::min(vertex0[2], std::min(vertex1[2], vertex2[2])),
-				std::max(vertex0[2], std::max(vertex1[2], vertex2[2])));
-
-		// fit onto the grid by making it bigger
-		// to be sure the triangle is never missed through round-off errors
-		Box3D discreteRange(
-				(plint)xRange[0], (plint)xRange[1]+1,
-				(plint)yRange[0], (plint)yRange[1]+1,
-				(plint)zRange[0], (plint)zRange[1]+1);
-
-		subdomain.enlarge(1);
-
-		Box3D inters;
-		if (intersect(discreteRange, subdomain, inters)) {
-			//for (plint iX = subdomain.x0; iX <= subdomain.x1; ++iX)
-			//	for (plint iY = subdomain.y0; iY <= subdomain.y1; ++iY)
-			//		for (plint iZ = subdomain.z0; iZ <= subdomain.z1; ++iZ) {
-			//			triangles[Dot3D(iX,iY,iZ)].push_back(iTriangle);
-			//			hit++;
-			//		}
-			triangles.push_back(iTriangle);
-		} //pcout << "--> number of hits: " << hit << ", with triangles.size() = " << triangles.size() << std::endl;
-	}
-}
 
 void createLinkFile(
 		MultiScalarField3D<int>& voxelMatrix,
+		MultiTensorField3D<plint,159>& linkField,
 		MultiContainerBlock3D& triangleHash,
 		std::string fname)
 {
@@ -883,107 +769,81 @@ void createLinkFile(
 	pluint numCellsAll = computeSum(flagMatrix);
 	pcout << "--> total number of fluid cells: " << numCellsAll << std::endl;
 
-	//memu();
-	////std::vector<Dot3D> assignedPositions;
-	//assignTriangles(*arterySurfaceMesh, /*assignedPositions, */triangles);
-	//memu();
+	{
+		// This bounding box is our overall link checking
+		Box3D bbox = voxelMatrix.getBoundingBox();
 
-	pluint count = 0, progress = 0, numCells = 0;
-	pluint maxbb = 100;
-	T percent;
-	for (plint x0 = voxelMatrix.getBoundingBox().x0; x0 < X; x0 += (maxbb+1))
-		for (plint y0 = voxelMatrix.getBoundingBox().y0; y0 < Y; y0 += (maxbb+1))
-			for (plint z0 = voxelMatrix.getBoundingBox().z0; z0 < Z; z0 += (maxbb+1)) {
+		// Let us make the hash container of the triangles
+		// This part is copied from the voxelizer
+		MultiContainerBlock3D hashContainer(voxelMatrix);
 
-				plint x1 = x0+maxbb; plint y1 = y0+maxbb; plint z1 = z0+maxbb;
+    	std::vector<MultiBlock3D*> container_arg;
+    		container_arg.push_back(&hashContainer);
 
-				if (x1 >= X) x1 = X;
-				if (y1 >= Y) y1 = Y;
-				if (z1 >= Z) z1 = Z;
+		// Generate the hashes 
+    	applyProcessingFunctional (
+            new CreateTriangleHash<T>(*arterySurfaceMesh),
+            hashContainer.getBoundingBox(), container_arg );	
 
-				Box3D bbox(x0,x1,y0,y1,z0,z1);
-				numCells = computeSum(flagMatrix, bbox); progress += numCells;
+		pcout << "--> Applying Processing Functional to compute links...\n";
+		double t1 = MPI_Wtime();
 
-				if (numCells != 0) {
-					percent = (T)progress/numCellsAll*100;
-					pcout << "--> " <<
-						std::setiosflags(std::ios::scientific) << std::setw(5) <<
-						percent << "% number of fluid cells: " << numCells << std::endl;
+		// Like creating the Hash, we need to pack up the arguments into a
+		// vector of MultiBlock3D*-s
+		std::vector<MultiBlock3D*> voxelToLinkArgs;
+    	voxelToLinkArgs.push_back(&flagMatrix);
+		voxelToLinkArgs.push_back(&linkField);
+		voxelToLinkArgs.push_back(&hashContainer);
 
-				  //assignTriangles(*arterySurfaceMesh, bbox, triangles);
-					assignTriangles(bbox);
+		// Thisis where we generate the links
+		applyProcessingFunctional(new VoxelToLink3D<int,plint>(bbox), bbox, voxelToLinkArgs);
+		double t2 = MPI_Wtime();
+		pcout << "--> done\n";
+		pcout << "--> VoxelToLink3D data processor took: " << t2 - t1 << " sec.\n";
+	}
 
-					memu();
-					MultiTensorField3D<plint,159> linkField(voxelMatrix, bbox);
-					memu();
-
-					char buffer[32]; count++;
-					snprintf(buffer, sizeof(char)*32, "fluidAndLinks_%03li.dat", count);
-
-					pcout << "--> " <<
-						std::setiosflags(std::ios::scientific) << std::setw(5) <<
-						percent << "% processing links and finding intersections with triangles" << std::endl;
-					applyProcessingFunctional(new VoxelToLink3D<int,plint>(bbox), bbox, flagMatrix, linkField);
-					bool dynamicContent = false;
-					pcout << "--> " <<
-						std::setiosflags(std::ios::scientific) << std::setw(5) <<
-						percent << "% data transfer" << std::endl;
-					linkField.setDataTransfer(new SparseTensorFieldDataTransfer3D<plint,159>());
-					pcout << "--> " <<
-						std::setiosflags(std::ios::scientific) << std::setw(5) <<
-						percent << "% parallel save" << std::endl;
-					parallelIO::save(linkField, buffer, dynamicContent);
-				}
-			}
 }
 
 // this is the function that prepares and performs the voxelization
 void run(bool endearly)
 {
-	Cuboid<T> cuboid = (*arteryTriangleSet).getBoundingCuboid(); // get the initial bounding box before palabos centres origin to 0
-	
+	// get the initial bounding box before palabos centres origin to 0
+	Cuboid<T> cuboid = (*arteryTriangleSet).getBoundingCuboid(); 
 	plint resolution = (plint)(std::round((cuboid.x1()-cuboid.x0())/dxREL));
 
-	DEFscaledMesh<T>* arteryDefMesh =
-		new DEFscaledMesh<T>(*arteryTriangleSet, resolution, referenceDirection, margin, extraLayer);
-	pcout << "-> dx: " << std::setprecision(10) << arteryDefMesh->getDx() << " in units of .stl" << std::endl;
-
+	// Rescale ArteryTriangleSet here
 	(*arteryTriangleSet).scale(dxREL/(((cuboid.x1()-cuboid.x0())/(T)(resolution))));
 	pcout << "cuboid length for dX to fit: " << std::setprecision(10) << (cuboid.x1()-cuboid.x0()) << std::endl;
-	pcout << "Resolution calculated for dX to fit: " << std::setprecision(10) << resolution << "and " << (T)(resolution) << std::endl;
+	pcout << "Resolution calculated for dX to fit: " << std::setprecision(10) << resolution << " and " << (T)(resolution) << std::endl;
 	pcout << "rescale factor to get dX to fit: " << std::setprecision(10) << dxREL/(((cuboid.x1()-cuboid.x0())/(T)(resolution))) << std::endl;
 
-	
-
-	arteryDefMesh =
+	// Create new DEFMesh with rescaled arteryTriangleSet
+	DEFscaledMesh<T>* arteryDefMesh = 
 		new DEFscaledMesh<T>(*arteryTriangleSet, resolution, referenceDirection, margin, extraLayer);
-	TriangleBoundary3D<T> arteryBoundary(*arteryDefMesh);
+
 	pcout << "-> dx: " << std::setprecision(10) << arteryDefMesh->getDx() << " in units of .stl" << std::endl;
 	
-	// For reverse transform later
-        //double dx = arteryDefMesh->getDx();
-        double dx = dxABS;
+    double dx = dxABS;
 	double shift_x = -cuboid.x0()/dxREL+3.0, shift_y = -cuboid.y0()/dxREL+3.0, shift_z = -cuboid.z0()/dxREL+3.0;
 
-        // delete arteryDefMesh;
-	arteryBoundary.getMesh().inflate();
+	TriangleBoundary3D<T>* arteryBoundary=new TriangleBoundary3D<T>(*arteryDefMesh);
+	(*arteryBoundary).getMesh().inflate();
 
 	// translate the mesh
 	Array<T,2> xRange, yRange, zRange;
-	arteryBoundary.getMesh().computeBoundingBox(xRange, yRange, zRange);
-	arteryBoundary.getMesh().translate(Array<T,3>(-xRange[0]+3.0,-yRange[0]+3.0,-zRange[0]+3.0));
+	(*arteryBoundary).getMesh().computeBoundingBox(xRange, yRange, zRange);
+	(*arteryBoundary).getMesh().translate(Array<T,3>(-xRange[0]+3.0,-yRange[0]+3.0,-zRange[0]+3.0));
 	
-	// For reverse transform later //JM moved earlier to avoid issues with delete arteryDefMesh line
-	// double dx = arteryDefMesh->getDx();
-	// double shift_x = -cuboid.x0()/dx+3.0, shift_y = -cuboid.y0()/dx+3.0, shift_z = -cuboid.z0()/dx+3.0;
+	arterySurfaceMesh = new TriangularSurfaceMesh<T>((*arteryBoundary).getMesh());
 
-	arterySurfaceMesh = new TriangularSurfaceMesh<T>(arteryBoundary.getMesh());
+	if( endearly )
+	{
+		pcout << "-> dumping ArteryTriangleSet.stl" << std::endl;
+		TriangleSet<T> ArteryTriangleSet = arterySurfaceMesh->toTriangleSet(DBL);
+		ArteryTriangleSet.writeBinarySTL("ArteryTriangleSet.stl");
+	}
 
-	pcout << "-> dumping ArteryTriangleSet.stl" << std::endl;
-	TriangleSet<T> ArteryTriangleSet = arterySurfaceMesh->toTriangleSet(DBL);
-	ArteryTriangleSet.writeBinarySTL("ArteryTriangleSet.stl");
-
-	pluint num_openings = (plint)arteryBoundary.getInletOutlet().size();
+	pluint num_openings = (plint)(*arteryBoundary).getInletOutlet().size();
 	plint sortDirection = 0;
 	openings.reserve(num_openings);
 
@@ -994,85 +854,107 @@ void run(bool endearly)
 	}
 
 	pcout << "-> locating openings and identifying lid triangles" << std::endl;
-
+	for(int i=0; i < analysisPoints.size(); i++) {
+		pcout << "Analysis Points[" << i << "]=( " << (analysisPoints[i])[0] 
+			<<	" , " << (analysisPoints[i])[1] << " , " << (analysisPoints[i])[2] << " ) \n";
+	}
+	
+	bool amIMainRank = global::mpi().isMainProcessor();
+	
 	std::ofstream ioletfile;
-	ioletfile.open("ioletpositions.txt");
-	ioletfile << "DX: " << dx << std::endl;
-	ioletfile << "SHIFTS: " << shift_x << " " << shift_y << " " << shift_z << std::endl;
+
+	if( amIMainRank ) {
+		ioletfile.open("ioletpositions.txt");
+		ioletfile << "DX: " << dx << std::endl;
+		ioletfile << "SHIFTS: " << shift_x << " " << shift_y << " " << shift_z << std::endl;
+	}
+	
+	// identify lid triangles at this opening; store in unordered_map for later
+	std::vector<Lid> lidList = (*arteryBoundary).getInletOutlet(sortDirection);
+
 	for (pluint i = 0; i < num_openings; ++i) {
 		// set distanceToIOlet to some large value
 		T distanceToIOlet = std::numeric_limits<T>::max();
 
 		// compute center and normal of opening
 		openings[i].center = computeBaryCenter (
-				arteryBoundary.getMesh(),
-				arteryBoundary.getInletOutlet(sortDirection)[i] );
+				(*arteryBoundary).getMesh(),
+				lidList[i] );
 		openings[i].normal = computeNormal (
-				arteryBoundary.getMesh(),
-				arteryBoundary.getInletOutlet(sortDirection)[i] );
+				(*arteryBoundary).getMesh(),
+				lidList[i] );
 
 		// compute radii values
 		openings[i].innerRadius = computeInnerRadius (
-				arteryBoundary.getMesh(),
-				arteryBoundary.getInletOutlet(sortDirection)[i] );
+				(*arteryBoundary).getMesh(),
+				lidList[i] );
+
 		openings[i].outerRadius = computeOuterRadius (
-				arteryBoundary.getMesh(),
-				arteryBoundary.getInletOutlet(sortDirection)[i] );
+				(*arteryBoundary).getMesh(),
+				lidList[i] );
+
 		//JM Areas to go here.
 		openings[i].area = computeArea (
-				arteryBoundary.getMesh(),
-				arteryBoundary.getInletOutlet(sortDirection)[i] );
+				(*arteryBoundary).getMesh(),
+				lidList[i] );
 
 		// identify opening as inlet or outlet
 		for (pluint j = 0; j < num_openings; ++j) {
 			if (norm(analysisPoints[j]-openings[i].center) < distanceToIOlet) {
 				distanceToIOlet = norm(analysisPoints[j]-openings[i].center);
 				if (j < numIlets) openings[i].type = 2;
-				else			  openings[i].type = 3; openings[i].index = j;
+				else			  openings[i].type = 3;
+				openings[i].index = j;
 			}
 		}
 
-		// identify lid triangles at this opening; store in unordered_map for later
-		pluint frstTriangle = arteryBoundary.getInletOutlet(sortDirection)[i].firstTriangle;
-		pluint numTriangles = arteryBoundary.getInletOutlet(sortDirection)[i].numTriangles;
-		for (pluint iTriangle = frstTriangle; iTriangle < frstTriangle+numTriangles; ++iTriangle)
-			lidTriangles[iTriangle] = i;
-
 		// output to screen
-		pcout << "-> opening at  (" << openings[i].center[0] << "," << openings[i].center[1] << ","
+		pcout << "-> " << i <<" :  opening at  (" << openings[i].center[0] << "," << openings[i].center[1] << ","
 			<< openings[i].center[2] << ")" << std::endl;
 		pcout << "-----> normal: (" << openings[i].normal[0] << "," << openings[i].normal[1] << ","
 			<< openings[i].normal[2] << ")" << std::endl;
 		pcout << "------> index: (" << openings[i].index << ")" << std::endl;
 		pcout << "-------> type: (" << openings[i].type << ")" << std::endl;
 
-		ioletfile << openings[i].center[0] << " " << openings[i].center[1] << " " << openings[i].center[2] << " " << 0.5*(openings[i].innerRadius + openings[i].outerRadius) << std::endl;
-		//ioletfile << openings[i].center[0] << " " << openings[i].center[1] << " " << openings[i].center[2] << std::endl;
+		pluint frstTriangle = lidList[i].firstTriangle;
+		pluint numTriangles = lidList[i].numTriangles;
+		for (pluint iTriangle = frstTriangle; iTriangle < frstTriangle+numTriangles; ++iTriangle) {
+			lidTriangles[iTriangle] = i;
+		//	pcout << "Marking " << iTriangle << " as a LID for opening " << i << "\n";
+		}
 		
-		// if (openings[i].innerRadius < 1.0)
+		if( amIMainRank ) {
+				ioletfile << openings[i].center[0] << " " << openings[i].center[1] << " " << openings[i].center[2] << " " << 0.5*(openings[i].innerRadius + openings[i].outerRadius) << std::endl;
+				//ioletfile << openings[i].center[0] << " " << openings[i].center[1] << " " << openings[i].center[2] << std::endl;
+		}
+			// if (openings[i].innerRadius < 1.0)
 		if (0.5*(openings[i].innerRadius + openings[i].outerRadius) < 1.0)
 		{
-			ioletfile.close();
+			if( amIMainRank ) ioletfile.close();
 			throw PlbIOException("Average Radius smaller than dx at above location (last point in ioletpostions.txt)");
-		}		
+		}
 	}
-	ioletfile.close();
 
-	if(endearly == true) {
+	if ( amIMainRank ) ioletfile.close();
+
+	if(endearly == true) {	
 		pcout << "Ending early. Positions were output to ioletpositions.txt" << std::endl;
 		// exit(0); //JM Robin's original
 		return;
 	}
 
 	memu();
+
 	// VOXELIZATION PROCESS
 	pcout << "-> voxelizing" << std::endl;
 	const int arteryFlowType = voxelFlag::inside;
-	VoxelizedDomain3D<T> arteryVoxelizedDomain(
-			arteryBoundary, arteryFlowType, extraLayer, borderWidth, extendedEnvelopeWidth, blockSize);
+ 	double start = MPI_Wtime();
+	VoxelizedDomain3D<T>* arteryVoxelizedDomain = new VoxelizedDomain3D<T>(
+			(*arteryBoundary), arteryFlowType, extraLayer, borderWidth, extendedEnvelopeWidth, blockSize);
+	double end = MPI_Wtime();
 	memu();
+	pcout << "--> Voxelization took " << end -start << " sec.\n";
 
-	pcout << "-> saving links" << std::endl;
 	if (linkFileUseInnerBorder) {
 		if (linkFileUseOuterBorder) {
 			pcout << "--> links for inner and outer border will be produced" << std::endl;
@@ -1083,10 +965,35 @@ void run(bool endearly)
 		linkFileUseOuterBorder = false;
 		pcout << "--> links will not be produced for either inner or outer border" << std::endl;
 	}
-	createLinkFile(arteryVoxelizedDomain.getVoxelMatrix(), arteryVoxelizedDomain.getTriangleHash(), "fluidAndLinks.dat");
+
+    memu();
+	pcout << "-> Allocating Link field based on voxelm matrix\n";
+    MultiTensorField3D<plint,159> linkField(arteryVoxelizedDomain->getVoxelMatrix());
+	memu();
+	pcout << "-> Creating links\n"; 
+
+	start = MPI_Wtime();
+	createLinkFile(arteryVoxelizedDomain->getVoxelMatrix(), linkField, arteryVoxelizedDomain->getTriangleHash(), "fluidAndLinks.dat");
+	end = MPI_Wtime();
+	pcout << "-> Links creation took " << end - start << " sec\n";
+	memu();
+	pcout << "-> Deleting Voxelized Domain\n"; 
+
+	delete arteryVoxelizedDomain;
+	delete arteryBoundary;
+	delete arteryDefMesh;
+
+	memu();
+	std::string linkFileName = "fluidsAndLinks.dat";
+	pcout << "-> Outputing Links file to " << linkFileName << "\n";
+	linkField.setDataTransfer(new SparseTensorFieldDataTransfer3D<plint,159>());
+	start = MPI_Wtime();
+	parallelIO::save(linkField, linkFileName.c_str(), false);
+	end = MPI_Wtime();
+	pcout << "-> ParallelIO took " << end - start << " sec.\n";
 
 	// write the heme input xml file with the correct inlet and outlet positions (in physical units)
-	writeXML(num_openings, dx, shift_x, shift_y, shift_z);
+	if( amIMainRank ) writeXML(num_openings, dx, shift_x, shift_y, shift_z);
 	pcout << "-> done" << std::endl;
 	return;
 }
@@ -1094,14 +1001,16 @@ void run(bool endearly)
 int main(int argc, char* argv[])
 {
 	// end early if two arguments are given instead of one
-	bool endearly = false;
-	//pcout << argc << std::endl; //JM Tidy line
-	if(argc == 3) {
-		pcout << "2 arguments given - ending early (after iolets positions dump)" << std::endl;
-		endearly = true;
+	bool endearly = (argc == 3);
+	
+	// Need to init PLB before using pcout otherwise
+	// every MPI will write to stdout 
+	plbInit(&argc, &argv);
+
+	if(endearly) {
+		pcout << "ENDEARLY option: ending early (after iolets positions dump)" << std::endl;
 	}
 
-	plbInit(&argc, &argv);
 	global::directories().setOutputDir("./");
 	global::IOpolicy().activateParallelIO(true);
 
@@ -1136,13 +1045,3 @@ int main(int argc, char* argv[])
 
 	return 0;
 }
-//pcout << "---> DEBUG" << std::endl;
-//{
-//	int i = 0;
-//	char hostname[256];
-//	gethostname(hostname, sizeof(hostname));
-//	printf("PID %d on %s ready for attach\n", getpid(), hostname);
-//	fflush(stdout);
-//	while (0 == i)
-//		sleep(5);
-//}
