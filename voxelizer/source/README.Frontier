@@ -1,0 +1,7 @@
+Building on Frontier:
+
+$ souce env_frontier.sh
+$ cp Makefile.frontier Makefile
+
+Then build in the usual way
+
