@@ -15,7 +15,7 @@ processing () {
 	# Separate time series into individual files
 	awk -v var=$OUT -v header="$HEADER" -F ' ' \
 	'
-    	BEGIN{N=-2; last_step=-1}
+    	BEGIN{N=-3; last_step=-1}
     	{
 	        if(last_step != $1)
         	{
@@ -30,6 +30,8 @@ processing () {
         	}
     	}
 	' $NAME
+
+ 	rm $OUT\-1.txt $OUT\-2.txt
 }
 
 rm results_0/outlet*
