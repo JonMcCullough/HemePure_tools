@@ -156,7 +156,7 @@ using namespace plb;
 #define DESCRIPTOR descriptors::D3Q19Descriptor
 
 
-const plint blockSize = 14; 			// Zero means: no sparse representation.
+const plint blockSize = 32; 			// Zero means: no sparse representation.
 const plint extendedEnvelopeWidth = 2;	// Because the Guo off lattice boundary condition needs 2-cell neighbor access.
 const plint borderWidth = 1;			// Because the Guo boundary condition acts in a one-cell layer.
 										//		Requirement: margin >= borderWidth.
@@ -463,7 +463,10 @@ void memu()
 	}
 
 	std::stringstream output;
-	pcout << "-| memory use: " << vmrss_kb << " kB" << "\n";
+	long vmrss_kb_global;
+	MPI_Allreduce(&vmrss_kb, &vmrss_kb_global,1, MPI_LONG, MPI_MAX, MPI_COMM_WORLD );
+
+	pcout << "-| memory use: this node: " << vmrss_kb << " kB.  Global max: " << vmrss_kb_global << " kB\n";
 }
 
 void writeXML(const pluint num_openings, double dx, double shift_x, double shift_y, double shift_z)
