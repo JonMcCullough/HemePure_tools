@@ -92,7 +92,7 @@ if __name__ == "__main__":
       fig.savefig("InletImages/Mesh" + meshNum + "Inlet" + str(let) + "_results.png")
       plt.close()
 
-      np.savetxt("out" + str(let) + ".weights.txt", adf[adf['iolet_number'] == let][['x','y','z','nodeWeights']].values, fmt='%d %d %d %f', delimiter=' ')
+      np.savetxt("out" + str(let) + ".txt.weights.txt", adf[adf['iolet_number'] == let][['x','y','z','nodeWeights']].values, fmt='%d %d %d %f', delimiter=' ')
 
      
 
