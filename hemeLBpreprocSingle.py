@@ -1,12 +1,14 @@
 import os, sys
 import numpy as np
 
-VOXELIZERPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/voxelizer/source/voxelizer_MultiInput"
-MAKEGMYMPIPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/vx2gmy/make_gmy_MPI.sh"
-GMY2LETSPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/gmy2inlets/gmy2lets"
-INFLOWPROFILEBUILDERPATH = "/net/storeptr1/heme/HemePure_JM/HemePure_tools/inflow-profile-builder/inflow_named3.py"
+VOXELIZERPATH = "./execs/voxelizer_MultiInput"
+MAKEGMYMPIPATH = "./execs/make_gmy_MPI.sh"
+VX2GMYPATH = "./execs/mpivx2gmy"
 
-VX2GMY_CHUNKSIZE = 2000
+GMY2LETSPATH = "./execs/gmy2lets"
+INFLOWPROFILEBUILDERPATH = "./execs/inflow-profile-builder/inflow_named3.py"
+
+VX2GMY_CHUNKSIZE = 10000
 
 def execute(command):
         print("Executing: " + command)
@@ -91,10 +93,12 @@ def write_heme_xml(tauValue, hemexmlfname, gmyfname, gmy_resolution, ioletsblock
         outxml.write(xml)
 
 
-if len(sys.argv) != 9:
-    sys.exit("Usage: python3 hemeLBPreProc.py STLFNAME STLUNITS(e.g 1e-3 for mm) INLETPOSITIONS(X1,Y1,Z1;X2,Y2,Z2;..., (in quotes)) NUMINLETS NUMOUTLETS DXreq NUMRANKS tauDesired")
+if len(sys.argv) != 10:
+    sys.exit("Usage: python3 hemeLBPreProc.py STLFNAME STLUNITS(e.g 1e-3 for mm) INLETPOSITIONS(X1,Y1,Z1;X2,Y2,Z2;..., (in quotes)) NUMINLETS NUMOUTLETS DXreq NUMRANKS RANKSPERNODE tauDesired")
 
-NUMRANKS = int(sys.argv[-2])
+NUMRANKS = int(sys.argv[-3])
+RANKSPERNODE = int(sys.argv[-2])
+CORESPERRANK=64/RANKSPERNODE
 tauDes = float(sys.argv[-1])
 
 STLFNAME = sys.argv[1]
@@ -104,7 +108,7 @@ with open(sys.argv[3]) as inletList:
     INLETS = [np.float_(iolet.split(",")) for iolet in inletList.readline().split(";")]
 NUMINLETS = int(sys.argv[4])
 NUMOUTLETS = int(sys.argv[5])
-DXreq = float(sys.argv[6])
+DXreq = np.float64(sys.argv[6])
 
 ROOTNAME = os.path.splitext(os.path.basename(STLFNAME))[0]
 
@@ -125,7 +129,7 @@ outletpos0 = [np.array([0.0,0.0,0.0]) for i in range(NUMOUTLETS)]
 write_voxelizer_xml(xmlfname, DXreq/STLUNITS, DXreq, STLFNAME, inletpos0, outletpos0)
 
 # Run voxelizer but end early, dumping only the ioletpositions
-execute("mpirun -np " + str(NUMRANKS) + " " + VOXELIZERPATH + " " + xmlfname + "  ENDEARLY\n")
+execute("srun -n " + str(int(NUMRANKS)) + " -N  " + str(int(NUMRANKS/RANKSPERNODE)) + " -c "+str(int(CORESPERRANK))+"  --unbuffered "  + VOXELIZERPATH + " " + xmlfname + "  ENDEARLY\n")
 
 iolet_list = []
 dx = None
@@ -200,15 +204,17 @@ for ioindex, ioletpos in enumerate(iolet_list):
 write_voxelizer_xml(xmlfname, DXreq/STLUNITS, DXreq, STLFNAME, inletposlist, outletposlist)
 
 # Run voxelizer to completion this time
-execute("mpirun -np " + str(NUMRANKS) + " " + VOXELIZERPATH + " " + xmlfname + "\n")
-execute("cat fluidAndLinks_*.dat > fluidAndLinks.dat && rm fluidAndLinks_*.plb && rm fluidAndLinks_*.dat")
+execute("srun -n " + str(int(NUMRANKS)) + " -N " + str(int(NUMRANKS/RANKSPERNODE)) + " -c "+str(int(CORESPERRANK))+"  --unbuffered " + VOXELIZERPATH + " " + xmlfname + "\n")
 
+# Catting many files should no longer be required. The voxelizer should dump just one large file.
+execute("rm -f fluidsAndLinks.plb")
 
 # Write the hemelb input.xml files - with different BCs
 gmyfname = ROOTNAME + ".gmy"
 gmy_resolution = dx #* STLUNITS
 
-BCExtensions=["PP","VP","VfP","VfWKf"]
+#BCExtensions=["PP","VP","VfP","VfWKf"]
+BCExtensions=["PP"]
 
 for t in range(len(BCExtensions)):
     hemexmlfname = "input_"+BCExtensions[t]+".xml"
@@ -219,8 +225,8 @@ for t in range(len(BCExtensions)):
     write_heme_xml(tauDes, hemexmlfname, gmyfname, gmy_resolution, ioletsblocktxt, dx*shifts) #JM had - shiftMaster here
 
 # Convert the voxelizer output into a hemelb gmy file
-execute("bash " + MAKEGMYMPIPATH + " fluidAndLinks.dat " + gmyfname  + " " + str(NUMRANKS) + " " + str(VX2GMY_CHUNKSIZE) + "\n")
-
+execute("srun -n " + str(int(NUMRANKS)) + " -N  " + str(int(NUMRANKS/RANKSPERNODE)) + " -c "+str(int(CORESPERRANK))+"  --unbuffered "  + VX2GMYPATH + " ./fluidsAndLinks.dat __make_gmy_MPI_test.gmy " + str(VX2GMY_CHUNKSIZE) + "\n")
+execute("cat __make_gmy_MPI_test.gmy __make_gmy_MPI_test.gmy_blockdata_temp_ > "+ gmyfname+"\n")
 
 ## Create the velocity weights file 
 if not os.path.exists('InletImages'):

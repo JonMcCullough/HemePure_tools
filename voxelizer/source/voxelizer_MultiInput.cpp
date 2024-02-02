@@ -156,7 +156,7 @@ using namespace plb;
 #define DESCRIPTOR descriptors::D3Q19Descriptor
 
 
-const plint blockSize = 14; 			// Zero means: no sparse representation.
+const plint blockSize = 32; 			// Zero means: no sparse representation.
 const plint extendedEnvelopeWidth = 2;	// Because the Guo off lattice boundary condition needs 2-cell neighbor access.
 const plint borderWidth = 1;			// Because the Guo boundary condition acts in a one-cell layer.
 										//		Requirement: margin >= borderWidth.
@@ -463,7 +463,10 @@ void memu()
 	}
 
 	std::stringstream output;
-	pcout << "-| memory use: " << vmrss_kb << " kB" << "\n";
+	long vmrss_kb_global;
+	MPI_Allreduce(&vmrss_kb, &vmrss_kb_global,1, MPI_LONG, MPI_MAX, MPI_COMM_WORLD );
+
+	pcout << "-| memory use: this node: " << vmrss_kb << " kB.  Global max: " << vmrss_kb_global << " kB\n";
 }
 
 void writeXML(const pluint num_openings, double dx, double shift_x, double shift_y, double shift_z)
@@ -744,29 +747,28 @@ void writeXML(const pluint num_openings, double dx, double shift_x, double shift
 
 
 void createLinkFile(
-		MultiScalarField3D<int>& voxelMatrix,
+		MultiScalarField3D<VoxelFlagType>& voxelMatrix,
 		MultiTensorField3D<plint,159>& linkField,
-		MultiContainerBlock3D& triangleHash,
 		std::string fname)
 {
 	plint X = voxelMatrix.getBoundingBox().x1-voxelMatrix.getBoundingBox().x0;
 	plint Y = voxelMatrix.getBoundingBox().y1-voxelMatrix.getBoundingBox().y0;
 	plint Z = voxelMatrix.getBoundingBox().z1-voxelMatrix.getBoundingBox().z0;
 
-	MultiScalarField3D<int> flagMatrix((MultiBlock3D&) voxelMatrix);
+	MultiScalarField3D<VoxelFlagType> flagMatrix((MultiBlock3D&) voxelMatrix);
 
 	setToConstant(flagMatrix,
-			flagMatrix.getBoundingBox(), 0);
+			flagMatrix.getBoundingBox(), static_cast<VoxelFlagType>(0));
 	setToConstant(flagMatrix, voxelMatrix, voxelFlag::inside,
-			flagMatrix.getBoundingBox(), 1);
+			flagMatrix.getBoundingBox(), static_cast<VoxelFlagType>(1));
 	if (linkFileUseInnerBorder) {
 		setToConstant(flagMatrix, voxelMatrix,
-				voxelFlag::innerBorder, flagMatrix.getBoundingBox(), 1);}
+				voxelFlag::innerBorder, flagMatrix.getBoundingBox(), static_cast<VoxelFlagType>(1));}
 	if (linkFileUseOuterBorder) {
 		setToConstant(flagMatrix, voxelMatrix,
-				voxelFlag::outerBorder, flagMatrix.getBoundingBox(), 1);}
+				voxelFlag::outerBorder, flagMatrix.getBoundingBox(), static_cast<VoxelFlagType>(1));}
 
-	pluint numCellsAll = computeSum(flagMatrix);
+	double numCellsAll = computeDoubleSum(flagMatrix);
 	pcout << "--> total number of fluid cells: " << numCellsAll << std::endl;
 
 	{
@@ -796,7 +798,7 @@ void createLinkFile(
 		voxelToLinkArgs.push_back(&hashContainer);
 
 		// Thisis where we generate the links
-		applyProcessingFunctional(new VoxelToLink3D<int,plint>(bbox), bbox, voxelToLinkArgs);
+		applyProcessingFunctional(new VoxelToLink3D<VoxelFlagType,plint>(bbox), bbox, voxelToLinkArgs);
 		double t2 = MPI_Wtime();
 		pcout << "--> done\n";
 		pcout << "--> VoxelToLink3D data processor took: " << t2 - t1 << " sec.\n";
@@ -947,7 +949,7 @@ void run(bool endearly)
 
 	// VOXELIZATION PROCESS
 	pcout << "-> voxelizing" << std::endl;
-	const int arteryFlowType = voxelFlag::inside;
+	const VoxelFlagType arteryFlowType = voxelFlag::inside;
  	double start = MPI_Wtime();
 	VoxelizedDomain3D<T>* arteryVoxelizedDomain = new VoxelizedDomain3D<T>(
 			(*arteryBoundary), arteryFlowType, extraLayer, borderWidth, extendedEnvelopeWidth, blockSize);
@@ -967,13 +969,13 @@ void run(bool endearly)
 	}
 
     memu();
-	pcout << "-> Allocating Link field based on voxelm matrix\n";
+	pcout << "-> Allocating Link field based on voxel matrix\n";
     MultiTensorField3D<plint,159> linkField(arteryVoxelizedDomain->getVoxelMatrix());
 	memu();
 	pcout << "-> Creating links\n"; 
 
 	start = MPI_Wtime();
-	createLinkFile(arteryVoxelizedDomain->getVoxelMatrix(), linkField, arteryVoxelizedDomain->getTriangleHash(), "fluidAndLinks.dat");
+	createLinkFile(arteryVoxelizedDomain->getVoxelMatrix(), linkField, "fluidAndLinks.dat");
 	end = MPI_Wtime();
 	pcout << "-> Links creation took " << end - start << " sec\n";
 	memu();
