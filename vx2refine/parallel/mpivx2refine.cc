@@ -225,6 +225,7 @@ int vx2refine(char *fname_vx, char *fnameRef_vx, uint64_t bsize, MPI_Comm comm)
     free(record);
     free(refined);
 
+    return 0;
 }
 
 int main(int argc, char **argv)
